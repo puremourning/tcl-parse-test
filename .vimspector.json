@@ -1,0 +1,21 @@
+{
+  "configurations": {
+    "Run": {
+      "adapter": "vscode-cpptools",
+      "variables": {
+        "make": {
+          "shell": [ "python", "-m", "compiledb", "make" ]
+        }
+      },
+      "configuration": {
+        "request": "launch",
+        "type": "cppdbg",
+        "program": "${fileBasenameNoExtension}",
+        "args": [],
+        "cwd": "${workspaceRoot}",
+        "miMode": "lldb",
+        "stopAtEntry": true
+      }
+    }
+  }
+}

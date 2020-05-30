@@ -1,0 +1,6 @@
+.clangd
+*.un~
+.*.sw[mnop]
+parse
+*.dSYM/
+compile_commands.json
