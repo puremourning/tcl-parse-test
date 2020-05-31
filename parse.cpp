@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <fstream>
@@ -28,6 +29,7 @@ namespace
                     std::string ns );
 
   size_t completeAt = -1;
+  const char *SCRIPT{};
 }
 
 namespace
@@ -189,6 +191,8 @@ namespace
     // TODO: if name is fully qualified, ignore ns
     auto name = parseLiteral( parseResult, ++tokenIndex );
 
+    // TODO: Split this logic out to a namespace splitting method, which can
+    // then be used by a findCommand.
     // If name starts with :: it's absolute and `ns` is ignored
     // Otherwise we concatenate anything up to the last :: to `ns`
     // name is always everything after the last ::
@@ -281,8 +285,7 @@ namespace
     {
       if ( parseResult.numWords > 2 )
       {
-        ++tokenIndex;
-        auto arg = parseLiteral( parseResult, tokenIndex );
+        auto arg = parseLiteral( parseResult, ++tokenIndex );
         if (arg.empty())
         {
           return;
@@ -290,8 +293,7 @@ namespace
 
         if (arg == "eval")
         {
-          ++tokenIndex;
-          std::string new_ns( parseLiteral( parseResult, tokenIndex ) );
+          std::string new_ns( parseLiteral( parseResult, ++tokenIndex ) );
           if (new_ns.empty())
           {
             return;
@@ -313,6 +315,64 @@ namespace
     else if ( thisCommand == "variable" )
     {
 
+    }
+    // etc.
+
+    // see if we requested completion within any of these tokens
+    // TODO: Do this in a second pass so thta we have scanned all of the procs
+    // when it happens. ok for testing now though
+    if (completeAt >= 0)
+    {
+      tokenIndex = 1; // skip the token that reprsents the whole command
+      const char * completePtr = SCRIPT + completeAt;
+      for (int wordIndex = 0;
+           wordIndex < parseResult.numWords;
+           ++wordIndex, ++tokenIndex)
+      {
+        Tcl_Token &token = parseResult.tokenPtr[ tokenIndex ];
+        std::string_view text = parseLiteral( parseResult, tokenIndex );
+        if ( token.start > completePtr )
+        {
+          // We;ve gone too far
+          break;
+        }
+        else if ( token.start + token.size < completePtr )
+        {
+          // we've not gone far enough
+          continue;
+        }
+        // otherwise, this _is_ the droid we are looking for
+        std::string_view partialToken( token.start, completePtr - token.start );
+        std::cout << "COMPLETE: Token is: " << partialToken << '\n';
+        if ( wordIndex == 0 )
+        {
+          std::cout << " -- Complete command name\n";
+        }
+        else
+        {
+          // FIXME: This is probably not the best way to search for commands,
+          // but it will do for now.
+          auto pos = std::find_if( commands_.begin(),
+                                   commands_.end(),
+                                   [&]( Command& c ) {
+                                     // TODO: thisCommand namespace qualifiers
+                                     return c.name == thisCommand;
+                                   } );
+          if ( pos != commands_.end() )
+          {
+            const Command &c = *pos;
+            std::cout << " -- Complete argument ("
+                      << wordIndex - 1
+                      << ", "
+                      << c.args[ wordIndex - 1 ]
+                      << ") of thisCommand\n" ;
+          }
+          else
+          {
+            std::cout << "Unknown command\n";
+          }
+        }
+      }
     }
   }
 
@@ -466,7 +526,7 @@ int main( int argc, char ** argv )
 
   const char *INCOMPLETE = "test [X";
 
-  const char *SCRIPT = LONG_SCRIPT;
+  SCRIPT = LONG_SCRIPT;
   std::string input;
   auto shift = [&]() { ++argv, --argc; };
   shift();
@@ -493,12 +553,23 @@ int main( int argc, char ** argv )
       shift();
       arg = argv[ 0 ];
       std::ifstream f( arg );
+      if (!f)
+      {
+        std::cerr << "Unable to read file: " << arg << '\n';
+        return 1;
+      }
       f >> std::noskipws; // fucking hell
       std::istream_iterator<char> begin( f );
       std::istream_iterator<char> end;
       input = std::string( begin, end );
       SCRIPT = input.c_str();
 
+      shift();
+    }
+    else if ( arg == "--string" )
+    {
+      shift();
+      SCRIPT = argv[ 0 ];
       shift();
     }
     else if ( arg == "--incomplete" )
