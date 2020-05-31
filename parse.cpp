@@ -1,5 +1,7 @@
 #include <cassert>
 #include <cstddef>
+#include <fstream>
+#include <ios>
 #include <iterator>
 #include <sstream>
 #include <stdint.h>
@@ -9,6 +11,7 @@
 #include <iostream>
 #include <vector>
 #include <filesystem>
+#include <charconv>
 
 // Naughty
 #include <tcl.h>
@@ -23,6 +26,8 @@ namespace
                     const char *script,
                     int numBytes,
                     std::string ns );
+
+  size_t completeAt = -1;
 }
 
 namespace
@@ -345,7 +350,8 @@ namespace
         //  - completing a command argument
         //
         // We'd need to know how much of a command it parsed, and where it got
-        // to to see where we are.
+        // to to see where we are. Indeed it looks like parseResult is
+        // populated, at least to a point
         std::cerr << "ERROR RECOVERY\n";
         while ( (++script, --numBytes) &&
                 !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
@@ -383,8 +389,7 @@ namespace
 
 int main( int argc, char ** argv )
 {
-
-  const char * SCRIPT = R"(
+  const char * LONG_SCRIPT = R"(
     # Comment
     proc Test { a b
                { c
@@ -451,13 +456,71 @@ int main( int argc, char ** argv )
 
     )";
 
-  const char * SCRIPT2 = R"(
+  const char * SHORT_SCRIPT = R"(
     proc Test::Abort {} {
       $X($Y) 1\
              2\
              [3]
     }
   )";
+
+  const char *INCOMPLETE = "test [X";
+
+  const char *SCRIPT = LONG_SCRIPT;
+  std::string input;
+  auto shift = [&]() { ++argv, --argc; };
+  shift();
+  while ( argc > 0 )
+  {
+    std::string_view arg( argv[ 0 ] );
+    if ( arg == "--short" )
+    {
+      SCRIPT = SHORT_SCRIPT;
+      shift();
+    }
+    else if ( arg == "--stdin" )
+    {
+      // c++ is just fucking terrible
+      std::cin >> std::noskipws;
+      std::istream_iterator<char> begin( std::cin );
+      std::istream_iterator<char> end;
+      input = std::string( begin, end );
+      SCRIPT = input.c_str();
+      shift();
+    }
+    else if ( arg == "--file" )
+    {
+      shift();
+      arg = argv[ 0 ];
+      std::ifstream f( arg );
+      f >> std::noskipws; // fucking hell
+      std::istream_iterator<char> begin( f );
+      std::istream_iterator<char> end;
+      input = std::string( begin, end );
+      SCRIPT = input.c_str();
+
+      shift();
+    }
+    else if ( arg == "--incomplete" )
+    {
+      SCRIPT = INCOMPLETE;
+      shift();
+    }
+    else if ( arg == "--codeCompleteAt" )
+    {
+      shift();
+      arg = argv[ 0 ];
+      if ( auto [ p, ec ] = std::from_chars( arg.data(),
+                                             arg.data() + arg.length(),
+                                             completeAt );
+           ec != std::errc() )
+      {
+        std::cerr << "Invalid offset: " << arg << '\n';
+        return 1;
+      }
+      shift();
+    }
+  }
 
   // TODO: Given a position in SCRIPT, find the closest start-of command, going
   // _backwards_, then parse forwards to see:
@@ -471,6 +534,8 @@ int main( int argc, char ** argv )
 
   Tcl_FindExecutable( argv[ 0 ] );
   Tcl_Interp *interp = Tcl_CreateInterp();
+
+  std::cout << "Parsing SCRIPT:\n" << SCRIPT << std::endl;
 
   // recursive parser
   parseScript( interp, SCRIPT, strlen( SCRIPT ), "" );

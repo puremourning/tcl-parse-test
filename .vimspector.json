@@ -11,7 +11,7 @@
         "request": "launch",
         "type": "cppdbg",
         "program": "${fileBasenameNoExtension}",
-        "args": [],
+        "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
         "miMode": "lldb",
         "stopAtEntry": true
