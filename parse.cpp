@@ -45,15 +45,24 @@ namespace
               << indent << "Type: " << token.type << '\n'
               << indent << "Text: " << std::string_view( token.start,
                                                          token.size )
-              << '\n';
+              << '\n'
+              << indent << "--\n";
 
+    // The numComponents of a given token includes all sub-tokens (the whole
+    // tree), so
+    //    X
+    //      Y
+    //        Z
+    // Has:
+    //    X (numComponents 2)
+    //       Y (numComponent 1)
+    //          Z (numComponents 0)
     size_t maxToken = tokenIndex + token.numComponents;
     while( tokenIndex < maxToken )
     {
       printToken( tokenPtr, depth + 1, tokenIndex );
     }
 
-    std::cout << indent << "<-\n";
   }
 
   void printCommandTree( Tcl_Parse& parseResult, size_t commandLen )
@@ -69,11 +78,46 @@ namespace
 
   std::string_view parseLiteral( Tcl_Parse& parseResult, size_t& tokenIndex )
   {
-    if ( parseResult.tokenPtr[ tokenIndex ].type == TCL_TOKEN_SIMPLE_WORD )
+    Tcl_Token &token = parseResult.tokenPtr[ tokenIndex ];
+    if ( token.type == TCL_TOKEN_SIMPLE_WORD )
     {
-      ++tokenIndex;
+      tokenIndex += token.numComponents;
       return std::string_view(parseResult.tokenPtr[ tokenIndex ].start,
                               parseResult.tokenPtr[ tokenIndex ].size);
+    }
+    else if ( token.type == TCL_TOKEN_WORD )
+    {
+      // Maybe somethng like 
+      //   X Y \
+      //     Z
+      //
+      // TODO: We just faff with the ranges of the included tokens. This is
+      // clearly wrong (why? it seems to give the right result? Maybe we should
+      // be checking for { and " and stuff here ?, or actually concatting the
+      // individual token texts?).
+      //
+      // From instrument.tcl's switch parse:
+      //
+      // # If the body token contains backslash sequences, there will
+      // # be more than one subtoken, so we take the range for the whole
+      // # body and subtract the braces.  Otherwise it's a "simple" word
+      // # with only one part and we can get the range from the text
+      // # subtoken. 
+      //
+      // Also, from isLiteral:
+      //
+      // # The text contains backslash sequences.  Bail if the text is
+      // # not in braces because this would require complicated substitutions.
+      // # Braces are a special case because only \newline is interesting and
+      // # this won't interfere with recursive parsing.
+      //
+      // So perhaps we should be checking for braces.
+      //
+      Tcl_Token &first = parseResult.tokenPtr[ tokenIndex + 1];
+      tokenIndex += token.numComponents;
+      Tcl_Token &last = parseResult.tokenPtr[ tokenIndex ];
+      return std::string_view( first.start,
+                               last.start+last.size - first.start );
     }
     return "";
   }
@@ -302,6 +346,7 @@ namespace
         //
         // We'd need to know how much of a command it parsed, and where it got
         // to to see where we are.
+        std::cerr << "ERROR RECOVERY\n";
         while ( (++script, --numBytes) &&
                 !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
           // advance
@@ -394,16 +439,23 @@ int main( int argc, char ** argv )
       set Y [$X eatpies {*}$X]
       set Z {*}$Y
       set A $X
+      ${X}
+      $X(\$Y + 1, 2) 1 \
+                     2 \
+                     [$3]
     }
+
+    $X 1\
+       2\
+       [3 4 5]
 
     )";
 
   const char * SCRIPT2 = R"(
     proc Test::Abort {} {
-      set X "test"
-      set Y [$X eatpies {*}$X]
-      set Z {*}$Y
-      set A $X
+      $X($Y) 1\
+             2\
+             [3]
     }
   )";
 
@@ -421,7 +473,7 @@ int main( int argc, char ** argv )
   Tcl_Interp *interp = Tcl_CreateInterp();
 
   // recursive parser
-  parseScript( interp, SCRIPT2, strlen( SCRIPT2 ), "" );
+  parseScript( interp, SCRIPT, strlen( SCRIPT ), "" );
 
   Tcl_DeleteInterp(interp);
 
