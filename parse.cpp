@@ -28,7 +28,7 @@ namespace
                     int numBytes,
                     std::string ns );
 
-  size_t completeAt = -1;
+  int completeAt_ = -1;
   const char *SCRIPT{};
 }
 
@@ -276,7 +276,65 @@ namespace
       return;
     }
 
-    // Building the index
+    // code-complete pass ?
+    if (completeAt_ >= 0)
+    {
+      // see if we requested completion within any of these tokens
+      size_t idx = 1; // skip the token that reprsents the whole command
+      const char * completePtr = SCRIPT + completeAt_;
+      for (int wordIndex = 0;
+           wordIndex < parseResult.numWords;
+           ++wordIndex, ++idx)
+      {
+        Tcl_Token &token = parseResult.tokenPtr[ idx ];
+        std::string_view text = parseLiteral( parseResult, idx );
+        if ( token.start > completePtr )
+        {
+          // We;ve gone too far
+          break;
+        }
+        else if ( token.start + token.size < completePtr )
+        {
+          // we've not gone far enough
+          continue;
+        }
+        // otherwise, this _is_ the droid we are looking for
+        std::string_view partialToken( token.start, completePtr - token.start );
+        std::cout << "COMPLETE: Token is: " << partialToken << '\n';
+        if ( wordIndex == 0 )
+        {
+          std::cout << " -- Complete command name\n";
+        }
+        else
+        {
+          // FIXME: This is probably not the best way to search for commands,
+          // but it will do for now.
+          auto pos = std::find_if( commands_.begin(),
+                                   commands_.end(),
+                                   [&]( Command& c ) {
+                                     // TODO: thisCommand namespace qualifiers
+                                     return c.name == thisCommand;
+                                   } );
+          if ( pos != commands_.end() )
+          {
+            const Command &c = *pos;
+            std::cout << " -- Complete argument ("
+                      << wordIndex - 1
+                      << ", "
+                      << c.args[ wordIndex - 1 ]
+                      << ") of " << thisCommand << "\n" ;
+          }
+          else
+          {
+            std::cout << "Unknown command: " << thisCommand << "\n";
+          }
+        }
+      }
+
+      return;
+    }
+
+    // Oteherwise, build the index
     if ( thisCommand == "proc" && parseResult.numWords == 4)
     {
       parseProc(interp, parseResult, tokenIndex, ns);
@@ -318,62 +376,6 @@ namespace
     }
     // etc.
 
-    // see if we requested completion within any of these tokens
-    // TODO: Do this in a second pass so thta we have scanned all of the procs
-    // when it happens. ok for testing now though
-    if (completeAt >= 0)
-    {
-      tokenIndex = 1; // skip the token that reprsents the whole command
-      const char * completePtr = SCRIPT + completeAt;
-      for (int wordIndex = 0;
-           wordIndex < parseResult.numWords;
-           ++wordIndex, ++tokenIndex)
-      {
-        Tcl_Token &token = parseResult.tokenPtr[ tokenIndex ];
-        std::string_view text = parseLiteral( parseResult, tokenIndex );
-        if ( token.start > completePtr )
-        {
-          // We;ve gone too far
-          break;
-        }
-        else if ( token.start + token.size < completePtr )
-        {
-          // we've not gone far enough
-          continue;
-        }
-        // otherwise, this _is_ the droid we are looking for
-        std::string_view partialToken( token.start, completePtr - token.start );
-        std::cout << "COMPLETE: Token is: " << partialToken << '\n';
-        if ( wordIndex == 0 )
-        {
-          std::cout << " -- Complete command name\n";
-        }
-        else
-        {
-          // FIXME: This is probably not the best way to search for commands,
-          // but it will do for now.
-          auto pos = std::find_if( commands_.begin(),
-                                   commands_.end(),
-                                   [&]( Command& c ) {
-                                     // TODO: thisCommand namespace qualifiers
-                                     return c.name == thisCommand;
-                                   } );
-          if ( pos != commands_.end() )
-          {
-            const Command &c = *pos;
-            std::cout << " -- Complete argument ("
-                      << wordIndex - 1
-                      << ", "
-                      << c.args[ wordIndex - 1 ]
-                      << ") of thisCommand\n" ;
-          }
-          else
-          {
-            std::cout << "Unknown command\n";
-          }
-        }
-      }
-    }
   }
 
   void parseScript( Tcl_Interp* interp,
@@ -526,6 +528,8 @@ int main( int argc, char ** argv )
 
   const char *INCOMPLETE = "test [X";
 
+  int completeAt = -1;
+
   SCRIPT = LONG_SCRIPT;
   std::string input;
   auto shift = [&]() { ++argv, --argc; };
@@ -608,8 +612,17 @@ int main( int argc, char ** argv )
 
   std::cout << "Parsing SCRIPT:\n" << SCRIPT << std::endl;
 
-  // recursive parser
+  // parse commands refs/etc.
   parseScript( interp, SCRIPT, strlen( SCRIPT ), "" );
+
+  // code complete - (TODO: error is much more likely as we only
+  // re-parse up to the complete offset, not the whole document; this is
+  // intentional, but we haven't fixed up the ERROR RECOVERY code yet)
+  if (completeAt >= 0)
+  {
+    completeAt_ = completeAt;
+    parseScript( interp, SCRIPT, completeAt, "" );
+  }
 
   Tcl_DeleteInterp(interp);
 
