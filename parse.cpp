@@ -42,7 +42,19 @@ namespace
     std::vector<std::string> args;
   };
   std::vector<Command> commands_;
-  std::vector<size_t> commandStartPositions_;
+
+  struct Call
+  {
+    std::string ns;
+    size_t offset;
+  };
+  std::vector<Call> commandStartPositions_;
+
+  struct QualifiedName
+  {
+    std::string ns;
+    std::string name;
+  };
 
   void printToken( Tcl_Token *tokenPtr, int depth, size_t& tokenIndex )
   {
@@ -61,10 +73,14 @@ namespace
     //    X
     //      Y
     //        Z
+    //      A
+    //        B
     // Has:
-    //    X (numComponents 2)
+    //    X (numComponents 4)
     //       Y (numComponent 1)
     //          Z (numComponents 0)
+    //       A (numComponent 1)
+    //          B (numComponents 0)
     size_t maxToken = tokenIndex + token.numComponents;
     while( tokenIndex < maxToken )
     {
@@ -168,6 +184,34 @@ namespace
     return elements;
   }
 
+  template< typename QN, typename S1, typename S2 >
+  void splitName( QN& qn, S1 ns, S2 name )
+  {
+    // If name starts with :: it's absolute and `ns` is ignored
+    // Otherwise we concatenate anything up to the last :: to `ns`
+    // name is always everything after the last ::
+
+    auto pos = name.rfind( "::" );
+    if ( pos == decltype(name)::npos )
+    {
+      qn.name = name;
+      qn.ns = ns;
+    }
+    else if ( ns.empty() ||
+              ( name.length() > 2 && name.substr( 0, 2 ) == "::" ) )
+    {
+      qn.name = name.substr( pos + 2 );
+      qn.ns = name.substr( 0, pos );
+    }
+    else
+    {
+      qn.name = name.substr( pos + 2 );
+      qn.ns = ns;
+      qn.ns += "::";
+      qn.ns += name.substr( 0, pos );
+    }
+  }
+
   void parseProc( Tcl_Interp* interp,
                   Tcl_Parse& parseResult,
                   size_t& tokenIndex,
@@ -191,32 +235,7 @@ namespace
     // TODO: strip any namespace qualifier and append to ns.
     // TODO: if name is fully qualified, ignore ns
     auto name = parseLiteral( parseResult, ++tokenIndex );
-
-    // TODO: Split this logic out to a namespace splitting method, which can
-    // then be used by a findCommand.
-    // If name starts with :: it's absolute and `ns` is ignored
-    // Otherwise we concatenate anything up to the last :: to `ns`
-    // name is always everything after the last ::
-
-    auto pos = name.rfind( "::" );
-    if ( pos == decltype(name)::npos )
-    {
-      c.name = name;
-      c.ns = ns;
-    }
-    else if ( ns.empty() ||
-              ( name.length() > 2 && name.substr( 0, 2 ) == "::" ) )
-    {
-      c.name = name.substr( pos + 2 );
-      c.ns = name.substr( 0, pos );
-    }
-    else
-    {
-      c.name = name.substr( pos + 2 );
-      c.ns = ns;
-      c.ns += "::";
-      c.ns += name.substr( 0, pos );
-    }
+    splitName( c, ns, name );
 
     auto args = parseLiteral( parseResult, ++tokenIndex );
     auto listTokens = parseList( interp, args.data(), args.length() );
@@ -310,11 +329,14 @@ namespace
         {
           // FIXME: This is probably not the best way to search for commands,
           // but it will do for now.
+          // findCommand; <<-- tag for later
+          QualifiedName qn;
+          splitName( qn, ns, thisCommand );
           auto pos = std::find_if( commands_.begin(),
                                    commands_.end(),
                                    [&]( Command& c ) {
-                                     // TODO: thisCommand namespace qualifiers
-                                     return c.name == thisCommand;
+                                     return c.name == qn.name &&
+                                            c.ns == qn.ns;
                                    } );
           if ( pos != commands_.end() )
           {
@@ -330,13 +352,15 @@ namespace
             std::cout << "Unknown command: " << thisCommand << "\n";
           }
         }
+        break;
       }
 
       return;
     }
 
     // record where the command started
-    commandStartPositions_.push_back( parseResult.commandStart - SCRIPT );
+    commandStartPositions_.push_back(
+      Call { ns, (size_t)(parseResult.commandStart - SCRIPT) } );
 
     // Oteherwise, build the index
     if ( thisCommand == "proc" && parseResult.numWords == 4)
@@ -603,6 +627,11 @@ int main( int argc, char ** argv )
       }
       shift();
     }
+    else
+    {
+      std::cerr << "Unrecognised argument: " << arg << "\n";
+      return 1;
+    }
   }
 
   // TODO: Given a position in SCRIPT, find the closest start-of command, going
@@ -631,15 +660,21 @@ int main( int argc, char ** argv )
     completeAt_ = completeAt;
     // find the _last_ command start posiiton which is <= completeAt and start
     // parsing from there
+    //
+    // FIXME: this doesn't work because we don't know the ns for the commands in
+    // the commandStartPosisions_
     auto pos = std::lower_bound( commandStartPositions_.rbegin(),
                                  commandStartPositions_.rend(),
-                                 completeAt,
-                                 []( size_t a, size_t b ) {
-                                   return a > b;
+                                 Call{ "", (size_t)completeAt },
+                                 []( const auto& a, const auto& b ) {
+                                   return a.offset > b.offset;
                                  } );
     if ( pos != commandStartPositions_.rend() )
     {
-      parseScript( interp, SCRIPT + *pos, completeAt, "" );
+      parseScript( interp,
+                   SCRIPT + pos->offset,
+                   completeAt - pos->offset,
+                   "" );
     }
   }
 
