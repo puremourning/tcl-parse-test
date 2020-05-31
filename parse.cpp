@@ -42,6 +42,7 @@ namespace
     std::vector<std::string> args;
   };
   std::vector<Command> commands_;
+  std::vector<size_t> commandStartPositions_;
 
   void printToken( Tcl_Token *tokenPtr, int depth, size_t& tokenIndex )
   {
@@ -334,6 +335,9 @@ namespace
       return;
     }
 
+    // record where the command started
+    commandStartPositions_.push_back( parseResult.commandStart - SCRIPT );
+
     // Oteherwise, build the index
     if ( thisCommand == "proc" && parseResult.numWords == 4)
     {
@@ -364,6 +368,8 @@ namespace
                        parseResult.tokenPtr[ tokenIndex ].size,
                        new_ns );
         }
+        // inscope ?
+        // others?
       }
     }
     else if ( thisCommand == "set" )
@@ -374,8 +380,10 @@ namespace
     {
 
     }
+    // rename ?
+    // unset ?
+    // array
     // etc.
-
   }
 
   void parseScript( Tcl_Interp* interp,
@@ -621,7 +629,18 @@ int main( int argc, char ** argv )
   if (completeAt >= 0)
   {
     completeAt_ = completeAt;
-    parseScript( interp, SCRIPT, completeAt, "" );
+    // find the _last_ command start posiiton which is <= completeAt and start
+    // parsing from there
+    auto pos = std::lower_bound( commandStartPositions_.rbegin(),
+                                 commandStartPositions_.rend(),
+                                 completeAt,
+                                 []( size_t a, size_t b ) {
+                                   return a > b;
+                                 } );
+    if ( pos != commandStartPositions_.rend() )
+    {
+      parseScript( interp, SCRIPT + *pos, completeAt, "" );
+    }
   }
 
   Tcl_DeleteInterp(interp);
