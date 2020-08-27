@@ -4,6 +4,7 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <limits.h>
 #include <sstream>
 #include <stdint.h>
 #include <string>
@@ -23,6 +24,8 @@
 
 namespace
 {
+  bool DEBUG = false;
+
   void parseScript( Tcl_Interp* interp,
                     const char *script,
                     int numBytes,
@@ -267,14 +270,17 @@ namespace
 
     commands_.push_back( c );
 
-    std::cout << " Indexed: \n"
-              << "   Command: " << c.ns << "::" << c.name << '\n'
-              << "   Doc: " << c.documenation << '\n'
-              << "   Args: ";
-    std::copy( c.args.begin(),
-               c.args.end(),
-               std::ostream_iterator< std::string >( std::cout, "," ) );
-    std::cout << '\n';
+    if ( DEBUG )
+    {
+      std::cout << " Indexed: \n"
+                << "   Command: " << c.ns << "::" << c.name << '\n'
+                << "   Doc: " << c.documenation << '\n'
+                << "   Args: ";
+      std::copy( c.args.begin(),
+                 c.args.end(),
+                 std::ostream_iterator< std::string >( std::cout, "," ) );
+      std::cout << '\n';
+    }
 
     auto body = parseLiteral( parseResult, ++tokenIndex );
     parseScript( interp, body.data(), body.length(), c.ns );
@@ -315,7 +321,7 @@ namespace
         }
         else if ( token.start + token.size < completePtr )
         {
-          // we've not gone far enough
+          // we've not gone far enough.
           continue;
         }
         // otherwise, this _is_ the droid we are looking for
@@ -407,6 +413,9 @@ namespace
     // rename ?
     // unset ?
     // array
+    // uplevel
+    // upvar
+    // interp?
     // etc.
   }
 
@@ -446,10 +455,37 @@ namespace
         // We'd need to know how much of a command it parsed, and where it got
         // to to see where we are. Indeed it looks like parseResult is
         // populated, at least to a point
-        std::cerr << "ERROR RECOVERY\n";
-        while ( (++script, --numBytes) &&
-                !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
-          // advance
+        if ( DEBUG )
+        {
+          std::cerr << "ERROR RECOVERY\n";
+        }
+        if ( completeAt_ >= 0 )
+        {
+          // TODO: We're completing, so it's likely that we don't yet have a
+          // complete command, so back up until we find something
+          // that starts a word, then asume that's the end of the command
+          auto original_start = script;
+          auto original_bytes = numBytes;
+          script += numBytes;
+          numBytes = 0;
+          while ( (--script, --completeAt_, script>=original_start ) &&
+                  !( CHAR_TYPE(*script) & ( TYPE_SPACE | TYPE_QUOTE ) ) ) {
+            // reverse
+          }
+          // parse up to this point, then see where we get to
+          // if the above loop ran out, we'd get script == original_start and
+          // bail because numBytes is 0
+          numBytes = script - original_start;
+          script = original_start;
+        }
+        else
+        {
+          // Advance to the next thing that looks like the end of a command and
+          // see if we find a command _afer_ this one
+          while ( (++script, --numBytes) &&
+                  !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
+            // advance
+          }
         }
       }
       else
@@ -466,7 +502,10 @@ namespace
             --commandLen;
           }
 
-          printCommandTree( parseResult, commandLen );
+          if (DEBUG)
+          {
+            printCommandTree( parseResult, commandLen );
+          }
 
           parseCommand( interp, parseResult, ns );
         }
@@ -626,6 +665,11 @@ int main( int argc, char ** argv )
         return 1;
       }
       shift();
+    }
+    else if ( arg == "--debug" )
+    {
+      shift();
+      DEBUG = true;
     }
     else
     {
