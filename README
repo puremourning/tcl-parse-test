@@ -1,9 +1,9 @@
 # Build
 
-Check out tcl in ../tcl
-build tcl in there (with debug support, static link)
-  cd ../tcl/unix
-  CFLAGS='-g -O0 -fno-omit-frame-pointer' ./configure --prefix=$(pwd)/../root --disable-shared --disable-framework
+git submodule update --init --recursive
+build tcl in the tcl/ directory (with debug support, static link)
+  cd tcl/unix
+  CFLAGS='-g -O0 -fno-omit-frame-pointer' ./configure --prefix=$(pwd)/../../root --disable-shared --disable-framework
   make -j 8
 
 make in this directory
