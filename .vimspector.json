@@ -1,20 +1,19 @@
 {
   "configurations": {
     "Run": {
-      "adapter": "vscode-cpptools",
+      "adapter": "CodeLLDB",
       "variables": {
         "make": {
-          "shell": [ "python", "-m", "compiledb", "make" ]
+          "shell": [ "python3", "-m", "compiledb", "make" ]
         }
       },
       "configuration": {
         "request": "launch",
-        "type": "cppdbg",
         "program": "${fileBasenameNoExtension}",
         "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
-        "miMode": "lldb",
-        "stopAtEntry": true
+        "stopAtEntry": true,
+        "stopOnEntry": true
       }
     }
   }
