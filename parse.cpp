@@ -44,7 +44,13 @@ namespace
     std::string name;
     std::vector<std::string> args;
   };
-  std::vector<Command> commands_;
+  std::vector<Command> commands_ {
+    // This is interesting. The call semantics of even basic commands really
+    // depeend on the _documenatation_ for a command rather than the signature.
+    { "", "display string to cmdline", "puts", { "[fp]", "[-nonewline]", "str"} },
+    { "", "set or get a variable", "set", { "var", "[value]" } },
+    { "", "define a new command", "proc", { "name", "args", "body" } },
+  };
 
   struct Call
   {
@@ -276,9 +282,13 @@ namespace
                 << "   Command: " << c.ns << "::" << c.name << '\n'
                 << "   Doc: " << c.documenation << '\n'
                 << "   Args: ";
-      std::copy( c.args.begin(),
-                 c.args.end(),
-                 std::ostream_iterator< std::string >( std::cout, "," ) );
+      if (c.args.size() > 0)
+      {
+        std::copy( c.args.begin(),
+                   c.args.end() - 1,
+                   std::ostream_iterator< std::string >( std::cout, "," ) );
+        std::cout << *c.args.rbegin();
+      }
       std::cout << '\n';
     }
 
@@ -305,6 +315,10 @@ namespace
     // code-complete pass ?
     if (completeAt_ >= 0)
     {
+      // FIXME/TODO if this is a token which is "code" such as the body of a
+      // proc, we need to recurse into the body like we do when parsing
+      // otherwise we always recognise the top level command (e.g. proc)
+
       // see if we requested completion within any of these tokens
       size_t idx = 1; // skip the token that reprsents the whole command
       const char * completePtr = SCRIPT + completeAt_;
@@ -313,23 +327,50 @@ namespace
            ++wordIndex, ++idx)
       {
         Tcl_Token &token = parseResult.tokenPtr[ idx ];
-        std::string_view text = parseLiteral( parseResult, idx );
-        if ( token.start > completePtr )
+        if ( wordIndex == parseResult.numWords - 1 )
         {
-          // We;ve gone too far
-          break;
+          // we hit the last token - it must be this one
         }
         else if ( token.start + token.size < completePtr )
         {
           // we've not gone far enough.
           continue;
         }
+
         // otherwise, this _is_ the droid we are looking for
-        std::string_view partialToken( token.start, completePtr - token.start );
+        assert( completePtr > token.start );
+        if ( completePtr - token.start > token.size )
+        {
+          // the completion position is _after_ the current token
+          wordIndex ++;
+        }
+
+        std::string_view partialToken( token.start,
+                                       completePtr - token.start );
         std::cout << "COMPLETE: Token is: " << partialToken << '\n';
         if ( wordIndex == 0 )
         {
-          std::cout << " -- Complete command name\n";
+          std::cout << " -- Complete command name in ns: " << ns << "\n";
+          for ( auto& c : commands_ )
+          {
+            // TODO/FIXME: this is not a good test for "in scope", it just
+            // checks if the namespaces are equal, or if the command namespace
+            // is a prefix of the current one....
+            if ( c.ns != ns && ns.find_first_of( c.ns ) != 0 )
+            {
+              std::cout << " - (ns) " << c.ns << "::" << c.name << '\n';
+              continue;
+            }
+
+            // FIXME: This is the worlds worst "fuzzy" match
+            if ( c.name.find_first_of( partialToken ) != 0 )
+            {
+              std::cout << " - (match) " << c.ns << "::" << c.name << '\n';
+              continue;
+            }
+
+            std::cout << " + " << c.ns << "::" << c.name << '\n';
+          }
         }
         else
         {
@@ -347,11 +388,28 @@ namespace
           if ( pos != commands_.end() )
           {
             const Command &c = *pos;
+            auto argIndex = wordIndex - 1;
+            if ( argIndex >= c.args.size() )
+            {
+              argIndex = c.args.size() - 1;
+            }
+
             std::cout << " -- Complete argument ("
-                      << wordIndex - 1
+                      << argIndex
                       << ", "
-                      << c.args[ wordIndex - 1 ]
+                      << c.args[ argIndex ]
                       << ") of " << thisCommand << "\n" ;
+
+            std::cout << "   -> Signature: ";
+            if (c.args.size() > 0)
+            {
+              // TODO: make a proper join() function
+              std::copy( c.args.begin(),
+                         c.args.end() - 1,
+                         std::ostream_iterator< std::string >( std::cout, "," ) );
+              std::cout << *c.args.rbegin();
+            }
+            std::cout << '\n';
           }
           else
           {
