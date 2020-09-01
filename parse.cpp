@@ -109,8 +109,79 @@ namespace
     }
   }
 
-  std::string_view parseLiteral( Tcl_Parse& parseResult, size_t& tokenIndex )
+  std::string_view parseWord( Tcl_Parse& parseResult, size_t& tokenIndex )
   {
+    /*
+     * Type values defined for Tcl_Token structures. These values are defined as
+     * mask bits so that it's easy to check for collections of types.
+     *
+     * TCL_TOKEN_WORD -		The token describes one word of a command,
+     *				from the first non-blank character of the word
+     *				(which may be " or {) up to but not including
+     *				the space, semicolon, or bracket that
+     *				terminates the word. NumComponents counts the
+     *				total number of sub-tokens that make up the
+     *				word. This includes, for example, sub-tokens
+     *				of TCL_TOKEN_VARIABLE tokens.
+     * TCL_TOKEN_SIMPLE_WORD -	This token is just like TCL_TOKEN_WORD except
+     *				that the word is guaranteed to consist of a
+     *				single TCL_TOKEN_TEXT sub-token.
+     * TCL_TOKEN_TEXT -		The token describes a range of literal text
+     *				that is part of a word. NumComponents is
+     *				always 0.
+     * TCL_TOKEN_BS -		The token describes a backslash sequence that
+     *				must be collapsed. NumComponents is always 0.
+     * TCL_TOKEN_COMMAND -		The token describes a command whose result
+     *				must be substituted into the word. The token
+     *				includes the enclosing brackets. NumComponents
+     *				is always 0.
+     * TCL_TOKEN_VARIABLE -		The token describes a variable substitution,
+     *				including the dollar sign, variable name, and
+     *				array index (if there is one) up through the
+     *				right parentheses. NumComponents tells how
+     *				many additional tokens follow to represent the
+     *				variable name. The first token will be a
+     *				TCL_TOKEN_TEXT token that describes the
+     *				variable name. If the variable is an array
+     *				reference then there will be one or more
+     *				additional tokens, of type TCL_TOKEN_TEXT,
+     *				TCL_TOKEN_BS, TCL_TOKEN_COMMAND, and
+     *				TCL_TOKEN_VARIABLE, that describe the array
+     *				index; numComponents counts the total number
+     *				of nested tokens that make up the variable
+     *				reference, including sub-tokens of
+     *				TCL_TOKEN_VARIABLE tokens.
+     * TCL_TOKEN_SUB_EXPR -		The token describes one subexpression of an
+     *				expression, from the first non-blank character
+     *				of the subexpression up to but not including
+     *				the space, brace, or bracket that terminates
+     *				the subexpression. NumComponents counts the
+     *				total number of following subtokens that make
+     *				up the subexpression; this includes all
+     *				subtokens for any nested TCL_TOKEN_SUB_EXPR
+     *				tokens. For example, a numeric value used as a
+     *				primitive operand is described by a
+     *				TCL_TOKEN_SUB_EXPR token followed by a
+     *				TCL_TOKEN_TEXT token. A binary subexpression
+     *				is described by a TCL_TOKEN_SUB_EXPR token
+     *				followed by the TCL_TOKEN_OPERATOR token for
+     *				the operator, then TCL_TOKEN_SUB_EXPR tokens
+     *				for the left then the right operands.
+     * TCL_TOKEN_OPERATOR -		The token describes one expression operator.
+     *				An operator might be the name of a math
+     *				function such as "abs". A TCL_TOKEN_OPERATOR
+     *				token is always preceeded by one
+     *				TCL_TOKEN_SUB_EXPR token for the operator's
+     *				subexpression, and is followed by zero or more
+     *				TCL_TOKEN_SUB_EXPR tokens for the operator's
+     *				operands. NumComponents is always 0.
+     * TCL_TOKEN_EXPAND_WORD -	This token is just like TCL_TOKEN_WORD except
+     *				that it marks a word that began with the
+     *				literal character prefix "{*}". This word is
+     *				marked to be expanded - that is, broken into
+     *				words after substitution is complete.
+     */
+
     Tcl_Token &token = parseResult.tokenPtr[ tokenIndex ];
     if ( token.type == TCL_TOKEN_SIMPLE_WORD )
     {
@@ -243,10 +314,10 @@ namespace
 
     // TODO: strip any namespace qualifier and append to ns.
     // TODO: if name is fully qualified, ignore ns
-    auto name = parseLiteral( parseResult, ++tokenIndex );
+    auto name = parseWord( parseResult, ++tokenIndex );
     splitName( c, ns, name );
 
-    auto args = parseLiteral( parseResult, ++tokenIndex );
+    auto args = parseWord( parseResult, ++tokenIndex );
     auto listTokens = parseList( interp, args.data(), args.length() );
     for ( auto token : listTokens ) {
       // Args is strictly a list of lists with default args
@@ -292,7 +363,7 @@ namespace
       std::cout << '\n';
     }
 
-    auto body = parseLiteral( parseResult, ++tokenIndex );
+    auto body = parseWord( parseResult, ++tokenIndex );
     parseScript( interp, body.data(), body.length(), c.ns );
   }
 
@@ -306,7 +377,7 @@ namespace
     }
 
     size_t tokenIndex = 0;
-    auto thisCommand = parseLiteral( parseResult, tokenIndex );
+    auto thisCommand = parseWord( parseResult, tokenIndex );
     if (thisCommand.empty())
     {
       return;
@@ -435,7 +506,7 @@ namespace
     {
       if ( parseResult.numWords > 2 )
       {
-        auto arg = parseLiteral( parseResult, ++tokenIndex );
+        auto arg = parseWord( parseResult, ++tokenIndex );
         if (arg.empty())
         {
           return;
@@ -443,7 +514,7 @@ namespace
 
         if (arg == "eval")
         {
-          std::string new_ns( parseLiteral( parseResult, ++tokenIndex ) );
+          std::string new_ns( parseWord( parseResult, ++tokenIndex ) );
           if (new_ns.empty())
           {
             return;
@@ -527,7 +598,8 @@ namespace
           script += numBytes;
           numBytes = 0;
           while ( (--script, --completeAt_, script>=original_start ) &&
-                  !( CHAR_TYPE(*script) & ( TYPE_SPACE | TYPE_QUOTE ) ) ) {
+                  !( CHAR_TYPE(*script) &
+                     ( TYPE_SPACE | TYPE_QUOTE | TYPE_BRACE ) ) ) {
             // reverse
           }
           // parse up to this point, then see where we get to
