@@ -8,3 +8,4 @@ parse: parse.cpp
 .PHONY: clean
 clean:
 	rm -f parse
+	rm -rf parse.dSYM
