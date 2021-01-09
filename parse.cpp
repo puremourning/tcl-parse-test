@@ -31,7 +31,6 @@ namespace
                     int numBytes,
                     std::string ns );
 
-  int completeAt_ = -1;
   const char *SCRIPT{};
 }
 
@@ -220,6 +219,8 @@ namespace
       Tcl_Token &first = parseResult.tokenPtr[ tokenIndex + 1];
       tokenIndex += token.numComponents;
       Tcl_Token &last = parseResult.tokenPtr[ tokenIndex ];
+      // TODO: We should recursively call parseScript if any token is of type
+      // TCL_TOKEN_COMMAND
       return std::string_view( first.start,
                                last.start+last.size - first.start );
     }
@@ -383,116 +384,6 @@ namespace
       return;
     }
 
-    // code-complete pass ?
-    if (completeAt_ >= 0)
-    {
-      // FIXME/TODO if this is a token which is "code" such as the body of a
-      // proc, we need to recurse into the body like we do when parsing
-      // otherwise we always recognise the top level command (e.g. proc)
-
-      // see if we requested completion within any of these tokens
-      size_t idx = 1; // skip the token that reprsents the whole command
-      const char * completePtr = SCRIPT + completeAt_;
-      for (int wordIndex = 0;
-           wordIndex < parseResult.numWords;
-           ++wordIndex, ++idx)
-      {
-        Tcl_Token &token = parseResult.tokenPtr[ idx ];
-        if ( wordIndex == parseResult.numWords - 1 )
-        {
-          // we hit the last token - it must be this one
-        }
-        else if ( token.start + token.size < completePtr )
-        {
-          // we've not gone far enough.
-          continue;
-        }
-
-        // otherwise, this _is_ the droid we are looking for
-        assert( completePtr > token.start );
-        if ( completePtr - token.start > token.size )
-        {
-          // the completion position is _after_ the current token
-          wordIndex ++;
-        }
-
-        std::string_view partialToken( token.start,
-                                       completePtr - token.start );
-        std::cout << "COMPLETE: Token is: " << partialToken << '\n';
-        if ( wordIndex == 0 )
-        {
-          std::cout << " -- Complete command name in ns: " << ns << "\n";
-          for ( auto& c : commands_ )
-          {
-            // TODO/FIXME: this is not a good test for "in scope", it just
-            // checks if the namespaces are equal, or if the command namespace
-            // is a prefix of the current one....
-            if ( c.ns != ns && ns.find_first_of( c.ns ) != 0 )
-            {
-              std::cout << " - (ns) " << c.ns << "::" << c.name << '\n';
-              continue;
-            }
-
-            // FIXME: This is the worlds worst "fuzzy" match
-            if ( c.name.find_first_of( partialToken ) != 0 )
-            {
-              std::cout << " - (match) " << c.ns << "::" << c.name << '\n';
-              continue;
-            }
-
-            std::cout << " + " << c.ns << "::" << c.name << '\n';
-          }
-        }
-        else
-        {
-          // FIXME: This is probably not the best way to search for commands,
-          // but it will do for now.
-          // findCommand; <<-- tag for later
-          QualifiedName qn;
-          splitName( qn, ns, thisCommand );
-          auto pos = std::find_if( commands_.begin(),
-                                   commands_.end(),
-                                   [&]( Command& c ) {
-                                     return c.name == qn.name &&
-                                            c.ns == qn.ns;
-                                   } );
-          if ( pos != commands_.end() )
-          {
-            const Command &c = *pos;
-            auto argIndex = wordIndex - 1;
-            if ( argIndex >= c.args.size() )
-            {
-              argIndex = c.args.size() - 1;
-            }
-
-            std::cout << " -- Complete argument ("
-                      << argIndex
-                      << ", "
-                      << c.args[ argIndex ]
-                      << ") of " << thisCommand << "\n" ;
-
-            std::cout << "   -> Signature: ";
-            if (c.args.size() > 0)
-            {
-              // TODO: make a proper join() function
-              std::copy( c.args.begin(),
-                         c.args.end() - 1,
-                         std::ostream_iterator< std::string >( std::cout, "," ) );
-              std::cout << *c.args.rbegin();
-            }
-            std::cout << '\n';
-          }
-          else
-          {
-            std::cout << "Unknown command: " << thisCommand << "\n";
-          }
-        }
-        break;
-      }
-
-      return;
-    }
-
     // record where the command started
     commandStartPositions_.push_back(
       Call { ns, (size_t)(parseResult.commandStart - SCRIPT) } );
@@ -588,34 +479,11 @@ namespace
         {
           std::cerr << "ERROR RECOVERY\n";
         }
-        if ( completeAt_ >= 0 )
-        {
-          // TODO: We're completing, so it's likely that we don't yet have a
-          // complete command, so back up until we find something
-          // that starts a word, then asume that's the end of the command
-          auto original_start = script;
-          auto original_bytes = numBytes;
-          script += numBytes;
-          numBytes = 0;
-          while ( (--script, --completeAt_, script>=original_start ) &&
-                  !( CHAR_TYPE(*script) &
-                     ( TYPE_SPACE | TYPE_QUOTE | TYPE_BRACE ) ) ) {
-            // reverse
-          }
-          // parse up to this point, then see where we get to
-          // if the above loop ran out, we'd get script == original_start and
-          // bail because numBytes is 0
-          numBytes = script - original_start;
-          script = original_start;
-        }
-        else
-        {
-          // Advance to the next thing that looks like the end of a command and
-          // see if we find a command _afer_ this one
-          while ( (++script, --numBytes) &&
-                  !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
-            // advance
-          }
+        // Advance to the next thing that looks like the end of a command and
+        // see if we find a command _afer_ this one
+        while ( (++script, --numBytes) &&
+                !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
+          // advance
         }
       }
       else
@@ -717,6 +585,8 @@ int main( int argc, char ** argv )
        2\
        [3 4 5]
 
+    set y [proc DoesThisProcGetCreated {} {}; expr {""}]
+
     )";
 
   const char * SHORT_SCRIPT = R"(
@@ -728,8 +598,6 @@ int main( int argc, char ** argv )
   )";
 
   const char *INCOMPLETE = "test [X";
-
-  int completeAt = -1;
 
   SCRIPT = LONG_SCRIPT;
   std::string input;
@@ -782,20 +650,6 @@ int main( int argc, char ** argv )
       SCRIPT = INCOMPLETE;
       shift();
     }
-    else if ( arg == "--codeCompleteAt" )
-    {
-      shift();
-      arg = argv[ 0 ];
-      if ( auto [ p, ec ] = std::from_chars( arg.data(),
-                                             arg.data() + arg.length(),
-                                             completeAt );
-           ec != std::errc() )
-      {
-        std::cerr << "Invalid offset: " << arg << '\n';
-        return 1;
-      }
-      shift();
-    }
     else if ( arg == "--debug" )
     {
       shift();
@@ -825,32 +679,6 @@ int main( int argc, char ** argv )
 
   // parse commands refs/etc.
   parseScript( interp, SCRIPT, strlen( SCRIPT ), "" );
-
-  // code complete - (TODO: error is much more likely as we only
-  // re-parse up to the complete offset, not the whole document; this is
-  // intentional, but we haven't fixed up the ERROR RECOVERY code yet)
-  if (completeAt >= 0)
-  {
-    completeAt_ = completeAt;
-    // find the _last_ command start posiiton which is <= completeAt and start
-    // parsing from there
-    //
-    // FIXME: this doesn't work because we don't know the ns for the commands in
-    // the commandStartPosisions_
-    auto pos = std::lower_bound( commandStartPositions_.rbegin(),
-                                 commandStartPositions_.rend(),
-                                 Call{ "", (size_t)completeAt },
-                                 []( const auto& a, const auto& b ) {
-                                   return a.offset > b.offset;
-                                 } );
-    if ( pos != commandStartPositions_.rend() )
-    {
-      parseScript( interp,
-                   SCRIPT + pos->offset,
-                   completeAt - pos->offset,
-                   "" );
-    }
-  }
 
   Tcl_DeleteInterp(interp);
 
