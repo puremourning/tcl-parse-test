@@ -1,11 +1,33 @@
 TCL ?= tcl
 DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer
-CPPFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 ${DEBUGFLAGS}
+ASANFLAGS=-fsanitize=address,undefined $(DEBUGFLAGS)
+BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17
+
+# put analyzer.cpp first, as this is the jubo TU
+ANALYZER_SOURCES=analyzer.cpp \
+		 source_location.cpp \
+		 script.cpp
+
+ifeq ($(ASAN),)
+	CPPFLAGS=$(BASICFLAGS) $(DEBUGFLAGS)
+else
+	CPPFLAGS=$(BASICFLAGS) $(ASANFLAGS)
+endif
+
 LDFLAGS=-L$(TCL)/unix -ltcl9.0 -lz  -lpthread -framework CoreFoundation
+
+.PHONY: all clean
+
+all: parse analyzer
 
 parse: parse.cpp
 
-.PHONY: clean
+analyzer: $(ANALYZER_SOURCES)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+
 clean:
-	rm -f parse
-	rm -rf parse.dSYM
+	rm -f parse analyzer
+	rm -rf parse.dSYM analyzer.dSYM
+
+
+# vim: ts=4
