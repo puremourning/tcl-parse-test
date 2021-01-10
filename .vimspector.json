@@ -12,8 +12,8 @@
         "program": "${fileBasenameNoExtension}",
         "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
-        "stopAtEntry": true,
-        "stopOnEntry": true
+        "stopOnEntry#json": "${StopOnEntry:false}",
+        "expressions": "native"
       }
     }
   }

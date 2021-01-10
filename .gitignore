@@ -5,3 +5,5 @@ parse
 *.dSYM/
 compile_commands.json
 root/
+.cache/
+analyzer
