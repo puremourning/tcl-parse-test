@@ -14,6 +14,7 @@
 #include <vector>
 #include <filesystem>
 #include <charconv>
+#include <unordered_map>
 
 // Naughty
 #include <tcl.h>
@@ -24,56 +25,44 @@
 
 namespace
 {
-  bool DEBUG = false;
-
   void parseScript( Tcl_Interp* interp,
-                    const char *script,
+                    const char* script,
                     int numBytes,
                     std::string ns );
 
-  const char *SCRIPT{};
-}
+  const char* SCRIPT{};
+}  // namespace
 
 namespace
 {
-  struct Command
-  {
-    std::string ns;
-    std::string documenation;
-    std::string name;
-    std::vector<std::string> args;
-  };
-  std::vector<Command> commands_ {
-    // This is interesting. The call semantics of even basic commands really
-    // depeend on the _documenatation_ for a command rather than the signature.
-    { "", "display string to cmdline", "puts", { "[fp]", "[-nonewline]", "str"} },
-    { "", "set or get a variable", "set", { "var", "[value]" } },
-    { "", "define a new command", "proc", { "name", "args", "body" } },
-  };
-
-  struct Call
-  {
-    std::string ns;
-    size_t offset;
-  };
-  std::vector<Call> commandStartPositions_;
-
   struct QualifiedName
   {
     std::string ns;
     std::string name;
   };
 
-  void printToken( Tcl_Token *tokenPtr, int depth, size_t& tokenIndex )
+  std::unordered_map< int, std::string_view > TOKEN_TYPE = {
+    { TCL_TOKEN_WORD, "TCL_TOKEN_WORD" },
+    { TCL_TOKEN_SIMPLE_WORD, "TCL_TOKEN_SIMPLE_WORD" },
+    { TCL_TOKEN_TEXT, "TCL_TOKEN_TEXT" },
+    { TCL_TOKEN_BS, "TCL_TOKEN_BS" },
+    { TCL_TOKEN_COMMAND, "TCL_TOKEN_COMMAND" },
+    { TCL_TOKEN_VARIABLE, "TCL_TOKEN_VARIABLE" },
+    { TCL_TOKEN_SUB_EXPR, "TCL_TOKEN_SUB_EXPR" },
+    { TCL_TOKEN_OPERATOR, "TCL_TOKEN_OPERATOR" },
+    { TCL_TOKEN_EXPAND_WORD, "TCL_TOKEN_EXPAND_WORD" },
+  };
+
+  void printToken( Tcl_Token* tokenPtr, int depth, size_t& tokenIndex )
   {
-    Tcl_Token &token = tokenPtr[ tokenIndex++ ];
+    Tcl_Token& token = tokenPtr[ tokenIndex++ ];
     std::string indent = std::string( depth * 2, ' ' );
-    std::cout << indent << "Index: " << tokenIndex
-                << "(+" << token.numComponents << ")\n"
-              << indent << "Type: " << token.type << '\n'
-              << indent << "Text: " << std::string_view( token.start,
-                                                         token.size )
-              << '\n'
+    std::cout << indent << "Index: " << tokenIndex << "(+"
+              << token.numComponents << ")\n"
+              << indent << "Type: " << token.type << "("
+              << TOKEN_TYPE[ token.type ] << ")" << '\n'
+              << indent
+              << "Text: " << std::string_view( token.start, token.size ) << '\n'
               << indent << "--\n";
 
     // The numComponents of a given token includes all sub-tokens (the whole
@@ -90,11 +79,10 @@ namespace
     //       A (numComponent 1)
     //          B (numComponents 0)
     size_t maxToken = tokenIndex + token.numComponents;
-    while( tokenIndex < maxToken )
+    while ( tokenIndex < maxToken )
     {
       printToken( tokenPtr, depth + 1, tokenIndex );
     }
-
   }
 
   void printCommandTree( Tcl_Parse& parseResult, size_t commandLen )
@@ -102,7 +90,7 @@ namespace
     std::string_view command( parseResult.commandStart, commandLen );
     std::cout << "COMMAND: " << command << '\n';
 
-    for( size_t tokenIndex = 0; tokenIndex < parseResult.numTokens; )
+    for ( size_t tokenIndex = 0; tokenIndex < parseResult.numTokens; )
     {
       printToken( parseResult.tokenPtr, 1, tokenIndex );
     }
@@ -181,16 +169,16 @@ namespace
      *				words after substitution is complete.
      */
 
-    Tcl_Token &token = parseResult.tokenPtr[ tokenIndex ];
+    Tcl_Token& token = parseResult.tokenPtr[ tokenIndex ];
     if ( token.type == TCL_TOKEN_SIMPLE_WORD )
     {
       tokenIndex += token.numComponents;
-      return std::string_view(parseResult.tokenPtr[ tokenIndex ].start,
-                              parseResult.tokenPtr[ tokenIndex ].size);
+      return std::string_view( parseResult.tokenPtr[ tokenIndex ].start,
+                               parseResult.tokenPtr[ tokenIndex ].size );
     }
     else if ( token.type == TCL_TOKEN_WORD )
     {
-      // Maybe somethng like 
+      // Maybe somethng like
       //   X Y \
       //     Z
       //
@@ -205,7 +193,7 @@ namespace
       // # be more than one subtoken, so we take the range for the whole
       // # body and subtract the braces.  Otherwise it's a "simple" word
       // # with only one part and we can get the range from the text
-      // # subtoken. 
+      // # subtoken.
       //
       // Also, from isLiteral:
       //
@@ -216,13 +204,13 @@ namespace
       //
       // So perhaps we should be checking for braces.
       //
-      Tcl_Token &first = parseResult.tokenPtr[ tokenIndex + 1];
+      Tcl_Token& first = parseResult.tokenPtr[ tokenIndex + 1 ];
       tokenIndex += token.numComponents;
-      Tcl_Token &last = parseResult.tokenPtr[ tokenIndex ];
+      Tcl_Token& last = parseResult.tokenPtr[ tokenIndex ];
       // TODO: We should recursively call parseScript if any token is of type
       // TCL_TOKEN_COMMAND
       return std::string_view( first.start,
-                               last.start+last.size - first.start );
+                               last.start + last.size - first.start );
     }
     return "";
   }
@@ -230,32 +218,32 @@ namespace
   // TODO: replace with Tcl_SplitList ?
   // i wnder why does tclParser.c use this approach ? (because the string we
   // have isn't NULL terminated)
-  std::vector<std::string_view> parseList( Tcl_Interp* interp,
-                                           const char *start,
-                                           size_t length )
+  std::vector< std::string_view > parseList( Tcl_Interp* interp,
+                                             const char* start,
+                                             size_t length )
   {
-    std::vector<std::string_view> elements;
-    const char *list = start;
-    const char *prevList = nullptr;
-    const char *last = list + length;
+    std::vector< std::string_view > elements;
+    const char* list = start;
+    const char* prevList = nullptr;
+    const char* last = list + length;
     size_t size;
-    const char *element;
+    const char* element;
 
-    while( true )
+    while ( true )
     {
       prevList = list;
-      if (TclFindElement( interp,
-                          list,
-                          length,
-                          &element,
-                          &list,
-                          &size,
-                          NULL ) != TCL_OK)
+      if ( TclFindElement( interp,
+                           list,
+                           length,
+                           &element,
+                           &list,
+                           &size,
+                           NULL ) != TCL_OK )
       {
         return elements;
       }
-      length -= (list - prevList);
-      if (element >= last)
+      length -= ( list - prevList );
+      if ( element >= last )
       {
         break;
       }
@@ -273,7 +261,7 @@ namespace
     // name is always everything after the last ::
 
     auto pos = name.rfind( "::" );
-    if ( pos == decltype(name)::npos )
+    if ( pos == decltype( name )::npos )
     {
       qn.name = name;
       qn.ns = ns;
@@ -300,11 +288,12 @@ namespace
   {
     // proc [namespace::]NAME SPEC:list BODY
 
-    if (parseResult.numWords != 4)
+    if ( parseResult.numWords != 4 )
     {
       return;
     }
 
+    /**
     Command c;
     if ( parseResult.commentSize > 0 )
     {
@@ -312,107 +301,105 @@ namespace
                                 parseResult.commentSize - 1 );
       c.documenation = comment;
     }
+    */
 
     // TODO: strip any namespace qualifier and append to ns.
     // TODO: if name is fully qualified, ignore ns
+    QualifiedName qn;
     auto name = parseWord( parseResult, ++tokenIndex );
-    splitName( c, ns, name );
+    splitName( qn, ns, name );
 
     auto args = parseWord( parseResult, ++tokenIndex );
     auto listTokens = parseList( interp, args.data(), args.length() );
-    for ( auto token : listTokens ) {
-      // Args is strictly a list of lists with default args
-      auto argTokens = parseList( interp, token.data(), token.length() );
-      if ( argTokens.size() == 1 )
-      {
-        c.args.emplace_back( std::string_view( token.data(),
-                                               token.length() ) );
-      }
-      else if ( argTokens.size() == 2 )
-      {
-        std::ostringstream arg;
-        arg << std::string_view( argTokens[ 0 ].data(),
-                                 argTokens[ 0 ].length() )
-            << " ["
-            << std::string_view( argTokens[ 1 ].data(),
-                                 argTokens[ 1 ].length() )
-            << ']';
-        c.args.push_back( arg.str() );
-      }
-      else
-      {
-        // emit diagnostic ?
-        return;
-      }
-    }
+    //for ( auto token : listTokens ) {
+    //  // Args is strictly a list of lists with default args
+    //  auto argTokens = parseList( interp, token.data(), token.length() );
+    //  if ( argTokens.size() == 1 )
+    //  {
+    //    c.args.emplace_back( std::string_view( token.data(),
+    //                                           token.length() ) );
+    //  }
+    //  else if ( argTokens.size() == 2 )
+    //  {
+    //    std::ostringstream arg;
+    //    arg << std::string_view( argTokens[ 0 ].data(),
+    //                             argTokens[ 0 ].length() )
+    //        << " ["
+    //        << std::string_view( argTokens[ 1 ].data(),
+    //                             argTokens[ 1 ].length() )
+    //        << ']';
+    //    c.args.push_back( arg.str() );
+    //  }
+    //  else
+    //  {
+    //    // emit diagnostic ?
+    //    return;
+    //  }
+    //}
 
-    commands_.push_back( c );
+    //commands_.push_back( c );
 
-    if ( DEBUG )
-    {
-      std::cout << " Indexed: \n"
-                << "   Command: " << c.ns << "::" << c.name << '\n'
-                << "   Doc: " << c.documenation << '\n'
-                << "   Args: ";
-      if (c.args.size() > 0)
-      {
-        std::copy( c.args.begin(),
-                   c.args.end() - 1,
-                   std::ostream_iterator< std::string >( std::cout, "," ) );
-        std::cout << *c.args.rbegin();
-      }
-      std::cout << '\n';
-    }
+    //if ( DEBUG )
+    //{
+    //  std::cout << " Indexed: \n"
+    //            << "   Command: " << c.ns << "::" << c.name << '\n'
+    //            << "   Doc: " << c.documenation << '\n'
+    //            << "   Args: ";
+    //  if (c.args.size() > 0)
+    //  {
+    //    std::copy( c.args.begin(),
+    //               c.args.end() - 1,
+    //               std::ostream_iterator< std::string >( std::cout, "," ) );
+    //    std::cout << *c.args.rbegin();
+    //  }
+    //  std::cout << '\n';
+    //}
 
     auto body = parseWord( parseResult, ++tokenIndex );
-    parseScript( interp, body.data(), body.length(), c.ns );
+    parseScript( interp, body.data(), body.length(), qn.ns );
   }
 
   void parseCommand( Tcl_Interp* interp,
                      Tcl_Parse& parseResult,
                      std::string ns )
   {
-    if (parseResult.numWords < 1)
+    if ( parseResult.numWords < 1 )
     {
       return;
     }
 
     size_t tokenIndex = 0;
     auto thisCommand = parseWord( parseResult, tokenIndex );
-    if (thisCommand.empty())
+    if ( thisCommand.empty() )
     {
       return;
     }
 
-    // record where the command started
-    commandStartPositions_.push_back(
-      Call { ns, (size_t)(parseResult.commandStart - SCRIPT) } );
-
     // Oteherwise, build the index
-    if ( thisCommand == "proc" && parseResult.numWords == 4)
+    if ( thisCommand == "proc" && parseResult.numWords == 4 )
     {
-      parseProc(interp, parseResult, tokenIndex, ns);
+      parseProc( interp, parseResult, tokenIndex, ns );
     }
     else if ( thisCommand == "namespace" )
     {
       if ( parseResult.numWords > 2 )
       {
         auto arg = parseWord( parseResult, ++tokenIndex );
-        if (arg.empty())
+        if ( arg.empty() )
         {
           return;
         }
 
-        if (arg == "eval")
+        if ( arg == "eval" )
         {
           std::string new_ns( parseWord( parseResult, ++tokenIndex ) );
-          if (new_ns.empty())
+          if ( new_ns.empty() )
           {
             return;
           }
 
-          ++tokenIndex; // TCL_TOKEN_WORD ?
-          ++tokenIndex; // TCL_TOKEN_TEXT ?
+          ++tokenIndex;  // TCL_TOKEN_WORD ?
+          ++tokenIndex;  // TCL_TOKEN_TEXT ?
           parseScript( interp,
                        parseResult.tokenPtr[ tokenIndex ].start,
                        parseResult.tokenPtr[ tokenIndex ].size,
@@ -424,11 +411,9 @@ namespace
     }
     else if ( thisCommand == "set" )
     {
-
     }
     else if ( thisCommand == "variable" )
     {
-
     }
     // rename ?
     // unset ?
@@ -436,22 +421,42 @@ namespace
     // uplevel
     // upvar
     // interp?
+    // foreach
+    else if ( thisCommand == "foreach" )
+    {
+      // foreach
+      parseWord( parseResult, ++tokenIndex );
+
+      // names
+      parseWord( parseResult, ++tokenIndex );
+
+      // list
+      parseWord( parseResult, ++tokenIndex );
+
+      // { body }
+      std::cout << "Parsing foreach body\n";
+      parseScript( interp,
+                   parseResult.tokenPtr[ tokenIndex ].start,
+                   parseResult.tokenPtr[ tokenIndex ].size,
+                   ns );
+    }
+    else if ( thisCommand == "if" )
+    {
+      // ugh, complex
+    }
     // etc.
   }
 
   void parseScript( Tcl_Interp* interp,
-                    const char *script,
+                    const char* script,
                     int numBytes,
                     std::string ns )
   {
     Tcl_Parse parseResult;
-    while (numBytes > 0)
+    while ( numBytes > 0 )
     {
-      if (Tcl_ParseCommand( interp,
-                            script,
-                            numBytes,
-                            0,
-                            &parseResult ) != TCL_OK )
+      if ( Tcl_ParseCommand( interp, script, numBytes, 0, &parseResult ) !=
+           TCL_OK )
       {
         // ERROR RECOVERY.
         //
@@ -475,14 +480,12 @@ namespace
         // We'd need to know how much of a command it parsed, and where it got
         // to to see where we are. Indeed it looks like parseResult is
         // populated, at least to a point
-        if ( DEBUG )
-        {
-          std::cerr << "ERROR RECOVERY\n";
-        }
+        std::cerr << "ERROR RECOVERY\n";
         // Advance to the next thing that looks like the end of a command and
         // see if we find a command _afer_ this one
-        while ( (++script, --numBytes) &&
-                !(CHAR_TYPE(*script) & TYPE_COMMAND_END) ) {
+        while ( ( ++script, --numBytes ) &&
+                !( CHAR_TYPE( *script ) & TYPE_COMMAND_END ) )
+        {
           // advance
         }
       }
@@ -496,31 +499,28 @@ namespace
           // use the internal 'term' item.
           // See https://wiki.tcl-lang.org/page/Tcl_ParseCommand
           int commandLen = parseResult.commandSize;
-          if ( parseResult.term <= script + numBytes ) {
+          if ( parseResult.term <= script + numBytes )
+          {
             --commandLen;
           }
 
-          if (DEBUG)
-          {
-            printCommandTree( parseResult, commandLen );
-          }
-
+          printCommandTree( parseResult, commandLen );
           parseCommand( interp, parseResult, ns );
         }
 
-        const char *end = script + numBytes;
+        const char* end = script + numBytes;
         script = parseResult.commandStart + parseResult.commandSize;
         numBytes = end - script;
 
-        Tcl_FreeParse(&parseResult);
+        Tcl_FreeParse( &parseResult );
       }
     }
   }
-}
+}  // namespace
 
-int main( int argc, char ** argv )
+int main( int argc, char** argv )
 {
-  const char * LONG_SCRIPT = R"(
+  const char* LONG_SCRIPT = R"(
     # Comment
     proc Test { a b
                { c
@@ -589,7 +589,7 @@ int main( int argc, char ** argv )
 
     )";
 
-  const char * SHORT_SCRIPT = R"(
+  const char* SHORT_SCRIPT = R"(
     proc Test::Abort {} {
       $X($Y) 1\
              2\
@@ -597,11 +597,11 @@ int main( int argc, char ** argv )
     }
   )";
 
-  const char *INCOMPLETE = "test [X";
+  const char* INCOMPLETE = "test [X";
 
   SCRIPT = LONG_SCRIPT;
   std::string input;
-  auto shift = [&]() { ++argv, --argc; };
+  auto shift = [ & ]() { ++argv, --argc; };
   shift();
   while ( argc > 0 )
   {
@@ -615,8 +615,8 @@ int main( int argc, char ** argv )
     {
       // c++ is just fucking terrible
       std::cin >> std::noskipws;
-      std::istream_iterator<char> begin( std::cin );
-      std::istream_iterator<char> end;
+      std::istream_iterator< char > begin( std::cin );
+      std::istream_iterator< char > end;
       input = std::string( begin, end );
       SCRIPT = input.c_str();
       shift();
@@ -626,14 +626,14 @@ int main( int argc, char ** argv )
       shift();
       arg = argv[ 0 ];
       std::ifstream f( arg );
-      if (!f)
+      if ( !f )
       {
         std::cerr << "Unable to read file: " << arg << '\n';
         return 1;
       }
-      f >> std::noskipws; // fucking hell
-      std::istream_iterator<char> begin( f );
-      std::istream_iterator<char> end;
+      f >> std::noskipws;  // fucking hell
+      std::istream_iterator< char > begin( f );
+      std::istream_iterator< char > end;
       input = std::string( begin, end );
       SCRIPT = input.c_str();
 
@@ -649,11 +649,6 @@ int main( int argc, char ** argv )
     {
       SCRIPT = INCOMPLETE;
       shift();
-    }
-    else if ( arg == "--debug" )
-    {
-      shift();
-      DEBUG = true;
     }
     else
     {
@@ -673,14 +668,12 @@ int main( int argc, char ** argv )
   // Or maybe we rely on an index to tell us the nearest command start ?
 
   Tcl_FindExecutable( argv[ 0 ] );
-  Tcl_Interp *interp = Tcl_CreateInterp();
-
-  std::cout << "Parsing SCRIPT:\n" << SCRIPT << std::endl;
+  Tcl_Interp* interp = Tcl_CreateInterp();
 
   // parse commands refs/etc.
   parseScript( interp, SCRIPT, strlen( SCRIPT ), "" );
 
-  Tcl_DeleteInterp(interp);
+  Tcl_DeleteInterp( interp );
 
   return 0;
 }
