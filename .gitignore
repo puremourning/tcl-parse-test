@@ -1,9 +1,8 @@
 .clangd
 *.un~
 .*.sw[mnop]
-parse
-*.dSYM/
 compile_commands.json
 root/
 .cache/
-analyzer
+release/
+debug/
