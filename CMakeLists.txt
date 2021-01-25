@@ -43,7 +43,8 @@ endif()
 # necessarily per-compiler)
 if ( NOT MSVC )
   set( CMAKE_CXX_FLAGS_DEBUG "-g -O0 -fno-omit-frame-pointer" )
-  set( CMAKE_CXX_FLAGS_RELEASE "-g -O2" )
+  set( CMAKE_CXX_FLAGS_RELEASE "-O2" )
+  set( CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O2" )
 endif()
 
 # add the executable
