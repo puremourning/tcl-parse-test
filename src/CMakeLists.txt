@@ -7,24 +7,32 @@ target_sources( analyzer
     source_location.cpp
 )
 
-target_include_directories( analyzer
-  PUBLIC
-    ${TCL_INCLUDE_PATH}
-)
-
-target_link_libraries( analyzer
-  PUBLIC
-    ${TCL_LIBRARY}
-)
-
-target_compile_options( analyzer
-  PRIVATE
-    -Wall -Wextra -Werror
-)
-
+# This enables unity build (ish), by pretending that these source files are
+# header files
 set_source_files_properties(
   script.cpp
   source_location.cpp
   PROPERTIES
     HEADER_FILE_ONLY ON
+)
+
+if ( MSVC )
+  target_compile_options( analyzer
+    PRIVATE
+      /W4 /WX
+  )
+else()
+  target_compile_options( analyzer
+    PRIVATE
+      -Wall -Wextra -Werror
+  )
+endif()
+
+target_include_directories( analyzer
+  PUBLIC
+    ${TCL_INCLUDE_PATH}
+)
+target_link_libraries( analyzer
+  PUBLIC
+    ${TCL_LIBRARY}
 )
