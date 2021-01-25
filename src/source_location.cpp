@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -18,20 +19,18 @@ namespace Parser
   SourceFile make_source_file( std::string_view fileName,
                                std::string&& contents )
   {
-    SourceFile f {
-      .fileName = std::string( fileName ),
-      .contents = std::move( contents )
-    };
+    SourceFile f{ .fileName = std::string( fileName ),
+                  .contents = std::move( contents ) };
     f.ParseNewLines();
     return f;
   }
 
   void SourceFile::ParseNewLines()
   {
-    newlines.reserve(
-      std::count_if( contents.begin(),
-                     contents.end(),
-                     [] ( auto x ) { return x == '\n'; } ) + 1 );
+    newlines.reserve( std::count_if( contents.begin(),
+                                     contents.end(),
+                                     []( auto x ) { return x == '\n'; } ) +
+                      1 );
 
     for ( size_t i = 0; i <= contents.length(); ++i )
     {
@@ -42,11 +41,19 @@ namespace Parser
     }
     newlines.push_back( contents.length() );
   }
-}
+}  // namespace Parser
 
 namespace Parser
 {
   using LinePos = std::tuple< size_t, size_t >;
+
+  // TODO: SHould i be relying on ADL here, or should this be in the global
+  // scope?
+  std::ostream& operator<<( std::ostream& o, const LinePos& p )
+  {
+    o << std::get< 0 >( p ) << ':' << std::get< 1 >( p );
+    return o;
+  }
 
   /**
    * Returns the 0-based line number and 0-based byte offset into that line of
@@ -54,13 +61,11 @@ namespace Parser
    */
   LinePos OffsetToLineByte( const SourceFile& sourceFile, size_t offset )
   {
-    for ( size_t i = 0; i < sourceFile.newlines.size(); ++ i )
+    for ( size_t i = 0; i < sourceFile.newlines.size(); ++i )
     {
       if ( sourceFile.newlines[ i ] >= offset )
       {
-        auto start_of_line = i == 0
-                           ? 0
-                           : sourceFile.newlines[ i - 1 ] + 1;
+        auto start_of_line = i == 0 ? 0 : sourceFile.newlines[ i - 1 ] + 1;
         auto column = offset - start_of_line;
 
         return { i, column };
@@ -70,7 +75,7 @@ namespace Parser
     assert( false && "Invalid offset" );
     return { 0, 0 };
   }
-}
+}  // namespace Parser
 
 namespace Parser
 {
@@ -90,14 +95,14 @@ namespace Parser
   }
 
   SourceLocation make_source_location( const SourceFile& sourceFile,
-                                       const char * pos )
+                                       const char* pos )
   {
-    return make_source_location( sourceFile,
-                                 pos - sourceFile.contents.data() );
+    return make_source_location( sourceFile, pos - sourceFile.contents.data() );
   }
-}
+}  // namespace Parser
 
-namespace Parser::Test {
+namespace Parser::Test
+{
   void TestOffsetToLineByte()
   {
     struct Test
@@ -107,7 +112,7 @@ namespace Parser::Test {
       LinePos pos;
     };
 
-    std::vector<Test> tests = {
+    std::vector< Test > tests = {
       { make_source_file( "test", "this is some text" ), 0, { 0, 0 } },
       { make_source_file( "test", "" ), 0, { 0, 0 } },
       { make_source_file( "test", "1\n2\n3\n4" ), 0, { 0, 0 } },
@@ -119,10 +124,14 @@ namespace Parser::Test {
       { make_source_file( "test", "aaaa\nbbbb\ncccc" ), 8, { 1, 3 } },
     };
 
-    for ( auto&& test : tests ) {
+    for ( auto&& test : tests )
+    {
       auto result = OffsetToLineByte( test.file, test.offset );
-      assert( result == test.pos );
+      if ( result != test.pos )
+      {
+        std::cerr << "Expected " << test.pos << " but got " << result << '\n';
+        abort();
+      }
     }
   }
-};
-
+};  // namespace Parser::Test

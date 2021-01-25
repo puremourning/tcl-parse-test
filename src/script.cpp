@@ -27,7 +27,7 @@ namespace Parser
     // TODO: Should use better names here ?
     using ScriptPtr = std::unique_ptr< Script >;
     using WordVec = std::vector< Word >;
-    using WordPtr = std::unique_ptr< Word>;
+    using WordPtr = std::unique_ptr< Word >;
     using Nothing = std::monostate;
 
     struct ArrayAccess
@@ -52,11 +52,7 @@ namespace Parser
     SourceLocation location;
     std::string_view text;
 
-    std::variant< Nothing,
-                  ArrayAccess,
-                  ScriptPtr,
-                  WordVec,
-                  WordPtr > data;
+    std::variant< Nothing, ArrayAccess, ScriptPtr, WordVec, WordPtr > data;
   };
 
 
@@ -82,118 +78,112 @@ namespace Parser
                   size_t& nextToken )
   {
     Word word;
-    Tcl_Token &token = parseResult.tokenPtr[ nextToken++ ];
+    Tcl_Token& token = parseResult.tokenPtr[ nextToken++ ];
 
     switch ( token.type )
     {
-      case TCL_TOKEN_SIMPLE_WORD:
-      {
+    case TCL_TOKEN_SIMPLE_WORD:
+    {
 
-        // contains a single "text" token - ignore this token and take the
-        // contents.
-        //
-        // Examples
-        //   TCL_TOKEN_SIMPLE_WORD: `{\nx y z\n}`
-        //     TCL_TOKEN_TEXT: `\nx y z\n`
-        //
-        //   TCL_TOKEN_SIMPLE_WORD: foreach
-        //     TCL_TOKEN_TEXT: foreach
-        //
-        assert( token.numComponents == 1 );
-        word = ParseWord( interp, context, parseResult, nextToken );
-        break;
+      // contains a single "text" token - ignore this token and take the
+      // contents.
+      //
+      // Examples
+      //   TCL_TOKEN_SIMPLE_WORD: `{\nx y z\n}`
+      //     TCL_TOKEN_TEXT: `\nx y z\n`
+      //
+      //   TCL_TOKEN_SIMPLE_WORD: foreach
+      //     TCL_TOKEN_TEXT: foreach
+      //
+      assert( token.numComponents == 1 );
+      word = ParseWord( interp, context, parseResult, nextToken );
+      break;
+    }
+
+    case TCL_TOKEN_WORD:
+    {
+      // contains pretty much everything else.
+      word.type = Word::Type::TOKEN_LIST;
+      word.location = make_source_location( context.file, token.start );
+      word.text = std::string_view{ token.start, (size_t)token.size };
+      auto& vec = word.data.emplace< Word::WordVec >();
+      vec.reserve( token.numComponents );
+
+      size_t maxToken = nextToken + token.numComponents;
+      while ( nextToken < maxToken )
+      {
+        vec.emplace_back(
+          ParseWord( interp, context, parseResult, nextToken ) );
       }
+      break;
+    }
 
-      case TCL_TOKEN_WORD:
+    case TCL_TOKEN_TEXT:
+    case TCL_TOKEN_BS:
+    {
+      word.type = Word::Type::TEXT;
+      word.text = std::string_view{ token.start, (size_t)token.size };
+      word.location = make_source_location( context.file, token.start );
+      break;
+    }
+
+    case TCL_TOKEN_COMMAND:
+    {
+      word.type = Word::Type::SCRIPT;
+      word.text = std::string_view{ token.start, (size_t)token.size };
+      word.location = make_source_location( context.file, token.start );
+
+      // A command like `[ a b c ]`
+      //
+      // NOTE: The text of TCL_TOKEN_COMMAND includes the [ and the ]. We need
+      // to parse only the contents of the command, so we use start + 1 and
+      // legth - 2 to ignore the [ and the ] to get the `a b c`
+      word.data = std::make_unique< Script >(
+        ParseScript( interp,
+                     context,
+                     { token.start + 1, (size_t)token.size - 2 } ) );
+
+      break;
+    }
+
+    case TCL_TOKEN_VARIABLE:
+    {
+      // Usually contains a single TCL_TOKEN_TEXT, but might contain more if
+      // it's an array
+      if ( token.numComponents == 1 )
       {
-        // contains pretty much everything else.
-        word.type = Word::Type::TOKEN_LIST;
-        word.location = make_source_location( context.file, token.start );
+        // scalar, just take the text
+        word = ParseWord( interp, context, parseResult, nextToken );
+        word.type = Word::Type::VARIABLE;
+      }
+      else
+      {
+        // Array - TCL_TOKEN_TEXT, followed by a list of other things that
+        // make up the array index
+        word.type = Word::Type::ARRAY_ACCESS;
         word.text = std::string_view{ token.start, (size_t)token.size };
-        auto &vec = word.data.emplace<Word::WordVec>();
-        vec.reserve( token.numComponents );
+        word.location = make_source_location( context.file, token.start );
 
         size_t maxToken = nextToken + token.numComponents;
-        while (nextToken < maxToken )
+        auto& arrayAccess = word.data.emplace< Word::ArrayAccess >();
+
+        Word name = ParseWord( interp, context, parseResult, nextToken );
+        assert( name.type == Word::Type::TEXT );
+        arrayAccess.name = name.text;
+
+        // Read the remainder into a word vector
+        while ( nextToken < maxToken )
         {
-          vec.emplace_back( ParseWord( interp,
-                                       context,
-                                       parseResult,
-                                       nextToken ) );
+          arrayAccess.index.emplace_back(
+            ParseWord( interp, context, parseResult, nextToken ) );
         }
-        break;
       }
+      break;
+    }
 
-      case TCL_TOKEN_TEXT:
-      case TCL_TOKEN_BS:
-      {
-        word.type = Word::Type::TEXT;
-        word.text = std::string_view{ token.start, (size_t)token.size };
-        word.location = make_source_location( context.file, token.start );
-        break;
-      }
-
-      case TCL_TOKEN_COMMAND:
-      {
-        word.type = Word::Type::SCRIPT;
-        word.text = std::string_view{ token.start, (size_t)token.size };
-        word.location = make_source_location( context.file, token.start );
-
-        // A command like `[ a b c ]`
-        //
-        // NOTE: The text of TCL_TOKEN_COMMAND includes the [ and the ]. We need
-        // to parse only the contents of the command, so we use start + 1 and
-        // legth - 2 to ignore the [ and the ] to get the `a b c`
-        word.data = std::make_unique<Script>(
-           ParseScript( interp,
-                        context,
-                        { token.start + 1, (size_t)token.size - 2 } ) );
-
-        break;
-      }
-
-      case TCL_TOKEN_VARIABLE:
-      {
-        // Usually contains a single TCL_TOKEN_TEXT, but might contain more if
-        // it's an array
-        if ( token.numComponents == 1 )
-        {
-          // scalar, just take the text
-          word = ParseWord( interp, context, parseResult, nextToken );
-          word.type = Word::Type::VARIABLE;
-        }
-        else
-        {
-          // Array - TCL_TOKEN_TEXT, followed by a list of other things that
-          // make up the array index
-          word.type = Word::Type::ARRAY_ACCESS;
-          word.text = std::string_view{ token.start, (size_t)token.size };
-          word.location = make_source_location( context.file, token.start );
-
-          size_t maxToken = nextToken + token.numComponents;
-          auto &arrayAccess = word.data.emplace< Word::ArrayAccess >();
-
-          Word name = ParseWord( interp, context, parseResult, nextToken );
-          assert( name.type == Word::Type::TEXT );
-          arrayAccess.name = name.text;
-
-          // Read the remainder into a word vector
-          while (nextToken < maxToken )
-          {
-            arrayAccess.index.emplace_back( ParseWord( interp,
-                                                       context,
-                                                       parseResult,
-                                                       nextToken ) );
-          }
-        }
-        break;
-      }
-
-      case TCL_TOKEN_SUB_EXPR:
-      case TCL_TOKEN_OPERATOR:
-      case TCL_TOKEN_EXPAND_WORD:
-        assert( false && "Unhandled case!" );
-        break;
+    case TCL_TOKEN_SUB_EXPR:
+    case TCL_TOKEN_OPERATOR:
+    case TCL_TOKEN_EXPAND_WORD: assert( false && "Unhandled case!" ); break;
     }
 
     return word;
@@ -220,54 +210,49 @@ namespace Parser
     //  Otherwise just parse all the words
 
     size_t tokenIndex = 0;
-    auto parseRest = [&] () {
+    auto parseRest = [ & ]() {
       while ( tokenIndex < (size_t)parseResult.numTokens )
       {
-        call.words.emplace_back( ParseWord( interp,
-                                            context,
-                                            parseResult,
-                                            tokenIndex ) );
+        call.words.emplace_back(
+          ParseWord( interp, context, parseResult, tokenIndex ) );
       }
     };
 
-    auto parseWord = [&]() -> auto& {
+    auto parseWord = [ & ]() -> auto&
+    {
       if ( tokenIndex >= (size_t)parseResult.numTokens )
       {
-        return call.words.emplace_back( Word{
-          .type = Word::Type::ERROR,
-          .location = make_source_location( context.file,
-                                            parseResult.commandStart
-                                              + parseResult.commentSize ),
-          .text = "Expected word!" } );
+        return call.words.emplace_back(
+          Word{ .type = Word::Type::ERROR,
+                .location = make_source_location( context.file,
+                                                  parseResult.commandStart +
+                                                    parseResult.commentSize ),
+                .text = "Expected word!" } );
       }
 
-      return call.words.emplace_back( ParseWord( interp,
-                                                 context,
-                                                 parseResult,
-                                                 tokenIndex ) );
+      return call.words.emplace_back(
+        ParseWord( interp, context, parseResult, tokenIndex ) );
     };
 
-    auto parseBody = [&]() -> auto& {
+    auto parseBody = [ & ]() -> auto&
+    {
       if ( tokenIndex >= (size_t)parseResult.numTokens )
       {
-        return call.words.emplace_back( Word{
-          .type = Word::Type::ERROR,
-          .location = make_source_location( context.file,
-                                            parseResult.commandStart
-                                                + parseResult.commentSize ),
-          .text = "Expected body!" } );
+        return call.words.emplace_back(
+          Word{ .type = Word::Type::ERROR,
+                .location = make_source_location( context.file,
+                                                  parseResult.commandStart +
+                                                    parseResult.commentSize ),
+                .text = "Expected body!" } );
       }
 
-      auto word = ParseWord( interp,
-                             context,
-                             parseResult,
-                             tokenIndex );
+      auto word = ParseWord( interp, context, parseResult, tokenIndex );
 
       if ( word.type == Word::Type::TEXT )
       {
         // Body is a simple word, so we can parse it
         word.type = Word::Type::SCRIPT;
-        word.data.emplace<Word::ScriptPtr>( std::make_unique<Script>(
+        word.data.emplace< Word::ScriptPtr >( std::make_unique< Script >(
           ParseScript( interp, context, word.text ) ) );
       }
 
@@ -279,27 +264,27 @@ namespace Parser
     {
       if ( cmdWord.text == "proc" && parseResult.numWords == 4 )
       {
-        parseWord(); // name
-        parseWord(); // arguments TODO: parseScopeArgs() ?
-        parseBody(); // body
+        parseWord();  // name
+        parseWord();  // arguments TODO: parseScopeArgs() ?
+        parseBody();  // body
       }
       else if ( cmdWord.text == "while" && parseResult.numWords == 3 )
       {
-        parseWord(); // while-expression TODO parseExpr() ?
+        parseWord();  // while-expression TODO parseExpr() ?
         parseBody();
       }
       else if ( cmdWord.text == "for" && parseResult.numWords == 5 )
       {
-        parseBody(); // { set x 0 }
-        parseWord(); // { $x < 100 } TODO parseExpr()
-        parseBody(); // { incr x }
-        parseBody(); // loop body
+        parseBody();  // { set x 0 }
+        parseWord();  // { $x < 100 } TODO parseExpr()
+        parseBody();  // { incr x }
+        parseBody();  // loop body
       }
       else if ( cmdWord.text == "foreach" && parseResult.numWords == 4 )
       {
-        parseWord(); // { x y } // TODO: parseScopeArgs()
-        parseWord(); // $list
-        parseBody(); // loop body
+        parseWord();  // { x y } // TODO: parseScopeArgs()
+        parseWord();  // $list
+        parseBody();  // loop body
       }
     }
 
@@ -312,9 +297,7 @@ namespace Parser
   {
     Tcl_Parse parseResult;
 
-    Script s {
-      .location = make_source_location( context.file, script.data() )
-    };
+    Script s{ .location = make_source_location( context.file, script.data() ) };
 
     while ( script.size() > 0 )
     {
@@ -335,13 +318,13 @@ namespace Parser
       const char* end = script.data() + script.size();
       const char* start = parseResult.commandStart + parseResult.commandSize;
       assert( end >= start );
-      script = { start, static_cast<size_t>( end - start ) };
+      script = { start, static_cast< size_t >( end - start ) };
       Tcl_FreeParse( &parseResult );
     }
 
     return s;
   };
-}
+}  // namespace Parser
 
 namespace Parser::Test
 {
@@ -355,20 +338,17 @@ namespace Parser::Test
 
     w = std::move( w2 );
 
-    auto &v = w.data.emplace<Word::WordVec>();
-    Word w3 = {
-      .type = Word::Type::TEXT,
-      .text = "Something"
-    };
+    auto& v = w.data.emplace< Word::WordVec >();
+    Word w3 = { .type = Word::Type::TEXT, .text = "Something" };
     v.push_back( std::move( w3 ) );
 
     w2 = std::move( w );
 
-    w2.data.emplace<Word::ScriptPtr>();
+    w2.data.emplace< Word::ScriptPtr >();
     w = std::move( w2 );
 
-    std::vector<Word> words;
+    std::vector< Word > words;
     words.reserve( 10 );
     words.emplace_back( std::move( w ) );
   }
-}
+}  // namespace Parser::Test

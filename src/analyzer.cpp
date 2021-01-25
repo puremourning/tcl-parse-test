@@ -45,7 +45,7 @@ namespace Parser::Test
     TestOffsetToLineByte();
     TestWord();
   }
-}
+}  // namespace Parser::Test
 
 int main( int argc, char** argv )
 {
@@ -106,13 +106,13 @@ int main( int argc, char** argv )
     }
   }
 
-  if (  mainFile.fileName.empty() )
+  if ( mainFile.fileName.empty() )
   {
     std::cerr << "No script supplied\n";
     return 1;
   }
 
-  Parser::ParseContext context { std::move( mainFile ), "" };
+  Parser::ParseContext context{ std::move( mainFile ), "" };
   auto script = Parser::ParseScript( interp, context, context.file.contents );
 
   // Smenatics to add the tree:
