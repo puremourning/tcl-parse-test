@@ -18,7 +18,10 @@ namespace Parser
   SourceFile make_source_file( std::string_view fileName,
                                std::string&& contents )
   {
-    SourceFile f { std::string( fileName ), std::move( contents ) };
+    SourceFile f {
+      .fileName = std::string( fileName ),
+      .contents = std::move( contents )
+    };
     f.ParseNewLines();
     return f;
   }

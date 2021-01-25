@@ -112,28 +112,31 @@ int main( int argc, char** argv )
     return 1;
   }
 
-  Parser::ParseContext context { mainFile, "" };
+  Parser::ParseContext context { std::move( mainFile ), "" };
   auto script = Parser::ParseScript( interp, context, context.file.contents );
 
-  // script contains only the basic sctructure of the script. No semantics have
-  // been applied. So for example, it doesn't know thatt `proc x y z` - z is a
-  // script and, say `y` is a list of arguments.
-
-  // Steps:
+  // Smenatics to add the tree:
   //
   // 0. Parse the script into a first-level vector of Calls (done)
   //
   // 1. Find scripts - scan through the list of Calls and find Words which are
   //    really scripts (e.g. the bodies of functions), and parse them into the
-  //    tree.
+  //    tree. (somewhat in progress)
   //
   //    TODO: Should we have a new type of Call here. E.g. for a proc, replace
   //    the Call with a Proc. Perhaps Call could be a vector of variants of
-  //    known "Call" types
+  //    known "Call" types. I think it's going to depend on what we want the
+  //    analyzer to work with. I'm thining that he analyzer should be (as far as
+  //    possible) absract, and just see "Script", "Expression" etc. and their
+  //    attached scopes.
+  //
+  // 1b. Find expressions. ? These will be like the if { expr }
+  // 1c. Find declarations. ? Thes willbe like x y z in for { x y z } ...
   //
   // 2. Discover namespaces, procs, scopes and variables.
   //    Walk the tree and index all the namespaces, procedures and scopes
-  //    defined by the known scope-commads (e.g proc, namespace eval, upleel)
+  //    defined by the known scope-commads (e.g proc, namespace eval, upleel).
+  //    Attach scopes to nodes in the tree of type Script or Expression
   //
   // 3. Calculate references. Link together commands and calls. Link variables
   //    usages to scopes and variable instaces

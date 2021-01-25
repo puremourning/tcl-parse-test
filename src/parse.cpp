@@ -90,7 +90,7 @@ namespace
     std::string_view command( parseResult.commandStart, commandLen );
     std::cout << "COMMAND: " << command << '\n';
 
-    for ( size_t tokenIndex = 0; tokenIndex < parseResult.numTokens; )
+    for ( size_t tokenIndex = 0; tokenIndex < (size_t)parseResult.numTokens; )
     {
       printToken( parseResult.tokenPtr, 1, tokenIndex );
     }

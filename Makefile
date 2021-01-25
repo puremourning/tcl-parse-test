@@ -3,7 +3,7 @@ DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer
 RELEASEFLAGS=-g -O2
 ASANFLAGS=-fsanitize=address,undefined $(DEBUGFLAGS)
 
-BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17
+BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 -Wall -Wextra -Werror
 
 # debug/release
 TARGET ?= debug
