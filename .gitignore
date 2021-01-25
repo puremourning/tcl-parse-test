@@ -6,3 +6,4 @@ root/
 .cache/
 release/
 debug/
+build/
