@@ -25,9 +25,22 @@ endif
 
 LDFLAGS=-L$(TCL)/unix -ltcl9.0 -lz  -lpthread -framework CoreFoundation
 
-.PHONY: all clean test
+.PHONY: all clean test help
 
 all: $(TARGET) $(TARGET)/parse $(TARGET)/analyzer
+
+help:
+	@echo "Developer build. See also cmake."
+	@echo "--------------------------------"
+	@echo ""
+	@echo "make [all|clean|test] TARGET=(debug|release) [ASAN=1] - build/clean/test"
+	@echo "make show_<var> - print the make variable 'var'"
+	@echo ""
+	@echo "Default TARGET is debug"
+	@echo "Default recipe is all"
+	@echo ""
+	@echo "Builds into ./debug or ./release (depending on TARGET)"
+	@echo ""
 
 $(TARGET)/parse: src/parse.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
