@@ -20,7 +20,8 @@ namespace Parser
                                std::string&& contents )
   {
     SourceFile f{ .fileName = std::string( fileName ),
-                  .contents = std::move( contents ) };
+                  .contents = std::move( contents ),
+                  .newlines{} };
     f.ParseNewLines();
     return f;
   }

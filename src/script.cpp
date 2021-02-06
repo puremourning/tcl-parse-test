@@ -36,8 +36,8 @@ namespace Parser
       WordVec index;
     };
 
-    // TODO: We probably don't need this because of the variant already holding
-    // a discriminant
+    // We still use this discriminant because some variant members are re-used
+    // for different node types
     enum class Type
     {
       TEXT,          // use text
@@ -227,7 +227,8 @@ namespace Parser
                 .location = make_source_location( context.file,
                                                   parseResult.commandStart +
                                                     parseResult.commentSize ),
-                .text = "Expected word!" } );
+                .text = "Expected word!",
+                .data{} } );
       }
 
       return call.words.emplace_back(
@@ -243,7 +244,8 @@ namespace Parser
                 .location = make_source_location( context.file,
                                                   parseResult.commandStart +
                                                     parseResult.commentSize ),
-                .text = "Expected body!" } );
+                .text = "Expected body!",
+                .data{} } );
       }
 
       auto word = ParseWord( interp, context, parseResult, tokenIndex );
@@ -286,6 +288,16 @@ namespace Parser
         parseWord();  // $list
         parseBody();  // loop body
       }
+
+      // TODO: Interesting cases:
+      //  - after ms [script script script..]
+      //    script concat'd, and executed as a command.
+      //  - eval arg arg arg...
+      //    args concat'd and executed as a script
+      //    maybe just replace the arg arg arg with a SCRIPT entry after doing
+      //    the concat, but the whole point of eval is the script is determined
+      //    by the variable values, so maybe this is pointless.
+      //  - coroutine
     }
 
     parseRest();
@@ -297,7 +309,10 @@ namespace Parser
   {
     Tcl_Parse parseResult;
 
-    Script s{ .location = make_source_location( context.file, script.data() ) };
+    Script s{
+      .location = make_source_location( context.file, script.data() ),
+      .commands{},
+    };
 
     while ( script.size() > 0 )
     {
@@ -339,7 +354,12 @@ namespace Parser::Test
     w = std::move( w2 );
 
     auto& v = w.data.emplace< Word::WordVec >();
-    Word w3 = { .type = Word::Type::TEXT, .text = "Something" };
+    Word w3 = {
+      .type = Word::Type::TEXT,
+      .location{},
+      .text = "Something",
+      .data{},
+    };
     v.push_back( std::move( w3 ) );
 
     w2 = std::move( w );

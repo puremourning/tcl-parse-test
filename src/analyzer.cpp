@@ -11,6 +11,7 @@
 #include <fstream>
 #include <optional>
 #include <variant>
+#include <iterator>
 
 // Naughty
 #include <tcl.h>
@@ -79,7 +80,7 @@ int main( int argc, char** argv )
       }
       else
       {
-        std::ifstream f( arg );
+        std::ifstream f{ std::string( arg ) };
         if ( !f )
         {
           std::cerr << "Unable to read file: " << arg << '\n';
@@ -132,6 +133,15 @@ int main( int argc, char** argv )
   //
   // 1b. Find expressions. ? These will be like the if { expr }
   // 1c. Find declarations. ? Thes willbe like x y z in for { x y z } ...
+  // 1d. Interesting scripts (like `after 10 uplevel 1 foreach x $y { puts $x
+  // }`)
+  //
+  // 1e. Find packages. Try and resolve `package require`:
+  //   - attempt to apply trivial updates to `auto_path` ?
+  //   - require a set of paths to be supplied, e.g. via TCLLIBPATH (or ask the
+  //     empbedded interp to find the package)?
+  //   - queue for indexing any packages discovered
+  //   - do we need to do this indexing first before 1b to 1d ? or before 2 ?
   //
   // 2. Discover namespaces, procs, scopes and variables.
   //    Walk the tree and index all the namespaces, procedures and scopes
@@ -140,6 +150,8 @@ int main( int argc, char** argv )
   //
   // 3. Calculate references. Link together commands and calls. Link variables
   //    usages to scopes and variable instaces
+  //
+  // 4. Coroutines... eh.
   //
 
   Tcl_DeleteInterp( interp );
