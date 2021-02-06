@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+CONTAINER=puremourning/tcl-parse-test:test
+
+docker run --cap-add=SYS_PTRACE \
+           --security-opt seccomp=unconfined \
+           --mount src="$(pwd)/../..",target=/home/dev/tcl-parse-test,type=bind \
+           -p 5678:5678 \
+           -it ${CONTAINER} \
+           "$@"
+

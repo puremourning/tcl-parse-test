@@ -2,6 +2,7 @@
   "configurations": {
     "Run": {
       "adapter": "CodeLLDB",
+      "default": true,
       "variables": {
         "make": {
           "shell": [ "python3", "-m", "compiledb", "make", "TARGET=debug" ]
@@ -14,6 +15,18 @@
         "cwd": "${workspaceRoot}",
         "stopOnEntry#json": "${StopOnEntry:false}",
         "expressions": "native"
+      }
+    },
+    "Attach container": {
+      "adapter": "vscode-cpptools",
+      "configuration": {
+        "request": "launch",
+        "program": "${workspaceRoot}/build-container/src/analyzer",
+        "MImode": "gdb",
+        "miDebuggerServerAddress": "127.0.0.1:5678",
+        "sourceFileMap": {
+          "/home/dev/tcl-parse-test": "${workspaceRoot}"
+        }
       }
     }
   }

@@ -14,9 +14,12 @@ project( TclAnalyzer
 )
 
 # All of this project uses c++17 and we certainly don't want random extensions
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+set( CMAKE_CXX_STANDARD 17 )
+set( CMAKE_CXX_EXTENSIONS OFF )
+set( CMAKE_CXX_STANDARD_REQUIRED True )
+
+# Always generate compilation database
+set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
 
 # Find TCL
 find_package(TCL 8.6 REQUIRED)
