@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+cd $(dirname $0)
+
 CONTAINER=puremourning/tcl-parse-test:test
 
 docker run --cap-add=SYS_PTRACE \
