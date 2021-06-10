@@ -10,7 +10,7 @@
       },
       "configuration": {
         "request": "launch",
-        "program": "${workspaceRoot}/debug/${fileBasenameNoExtension}",
+        "program": "${workspaceRoot}/debug/analyzer",
         "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
         "stopOnEntry#json": "${StopOnEntry:false}",

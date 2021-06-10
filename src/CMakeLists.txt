@@ -1,17 +1,17 @@
 add_executable( analyzer )
 
+set( SOURCES script.cpp source_location.cpp index.cpp )
+
 target_sources( analyzer
   PRIVATE
     analyzer.cpp
-    script.cpp
-    source_location.cpp
+    ${SOURCES}
 )
 
 # This enables unity build (ish), by pretending that these source files are
 # header files
 set_source_files_properties(
-  script.cpp
-  source_location.cpp
+  ${SOURCES}
   PROPERTIES
     HEADER_FILE_ONLY ON
 )

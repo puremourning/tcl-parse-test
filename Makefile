@@ -1,9 +1,9 @@
 TCL ?= tcl
-DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer
-RELEASEFLAGS=-g -O2
+DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra
+RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
 ASANFLAGS=-fsanitize=address,undefined $(DEBUGFLAGS)
 
-BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 -Wall -Wextra -Werror
+BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 
 
 # debug/release
 TARGET ?= debug
@@ -11,7 +11,8 @@ TARGET ?= debug
 # put analyzer.cpp first, as this is the jubo TU
 ANALYZER_SOURCES=src/analyzer.cpp \
 				 src/source_location.cpp \
-				 src/script.cpp
+				 src/script.cpp \
+				 src/index.cpp
 
 ifeq ($(TARGET),debug)
 	ifeq ($(ASAN),)
