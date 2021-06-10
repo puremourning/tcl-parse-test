@@ -8,9 +8,13 @@ set SHINERS [list CRESCENT 1 \
 
 namespace eval Test {
   namespace export {[A-Z]*}
+
+  proc Toaster { t } {
+    ttttt
+  }
 }
 
-proc Test::PublicProc { moon shine } {
+proc Test::PublicProc { moon { shine "shone" } } {
   puts "Moon: ${moon}"
   _PrivateProc [expr { $shine * 100 } ]
 }
@@ -32,3 +36,6 @@ proc LikeAStar { x } {
 foreach { moon shiner } $SHINERS {
   Test::PublicProc $moon $shiner
 }
+
+set C sea
+lappend SHINERS {*}[list A B $C]

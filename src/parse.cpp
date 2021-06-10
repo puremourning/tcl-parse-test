@@ -226,7 +226,7 @@ namespace
     const char* list = start;
     const char* prevList = nullptr;
     const char* last = list + length;
-    size_t size;
+    int size;
     const char* element;
 
     while ( true )

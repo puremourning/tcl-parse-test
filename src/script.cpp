@@ -7,6 +7,10 @@
 #include <string_view>
 
 #include <tcl.h>
+#include <tclInt.h>
+#include <tclParse.h>
+#include <tclDecls.h>
+#include "tclIntDecls.h"
 
 #include "source_location.cpp"
 
@@ -46,6 +50,7 @@ namespace Parser
       SCRIPT,        // use data.ScriptPtr
       TOKEN_LIST,    // use data.WordVec
       EXPAND,        // use data.WordPtr
+      LIST,          // use data.WordVec
       ERROR,         // Some sort of parse error (use text)
     } type;
 
@@ -101,9 +106,17 @@ namespace Parser
     }
 
     case TCL_TOKEN_WORD:
+    case TCL_TOKEN_EXPAND_WORD:
     {
       // contains pretty much everything else.
-      word.type = Word::Type::TOKEN_LIST;
+      if ( token.type == TCL_TOKEN_EXPAND_WORD )
+      {
+        word.type = Word::Type::EXPAND;
+      }
+      else
+      {
+        word.type = Word::Type::TOKEN_LIST;
+      }
       word.location = make_source_location( context.file, token.start );
       word.text = std::string_view{ token.start, (size_t)token.size };
       auto& vec = word.data.emplace< Word::WordVec >();
@@ -183,11 +196,66 @@ namespace Parser
 
     case TCL_TOKEN_SUB_EXPR:
     case TCL_TOKEN_OPERATOR:
-    case TCL_TOKEN_EXPAND_WORD: assert( false && "Unhandled case!" ); break;
+      assert( false && "Unhandled case!" );
+      break;
     }
 
     return word;
   }
+
+  Word WordToList( Tcl_Interp* interp,
+                   const ParseContext& context,
+                   Word&& word )
+  {
+    const char* list = word.text.data();
+    size_t length = word.text.length();
+    const char* prevList = nullptr;
+    const char* last = list + length;
+    int size;
+    const char* element;
+
+    Word::WordVec vec;
+
+    while ( true )
+    {
+      prevList = list;
+      if ( TclFindElement( interp,
+                           list,
+                           length,
+                           &element,
+                           &list,
+                           &size,
+                           NULL ) != TCL_OK )
+      {
+        // unable to convert to list, leave as a word
+        return std::move( word );
+      }
+      length -= ( list - prevList );
+      if ( element >= last )
+      {
+        break;
+      }
+      // TODO: What if the element is itself a list? do we need to really
+      // defer this processing until we need it ? or say, this is specifically
+      // for parsing function arguments. for now, leave it for the indexer to
+      // =work out
+      vec.emplace_back( Word{
+        .type = Word::Type::TEXT,
+        .location = make_source_location( context.file, element ),
+        .text = { element, (size_t)( size ) },
+        .data{}
+      } );
+    }
+
+    if ( vec.size() == 1 )
+    {
+      return std::move( word );
+    }
+
+    word.type = Word::Type::LIST;
+    word.data = std::move( vec );
+    return std::move( word );
+  };
 
   void ParseCommand( Tcl_Interp* interp,
                      const ParseContext& context,
@@ -235,6 +303,45 @@ namespace Parser
         ParseWord( interp, context, parseResult, tokenIndex ) );
     };
 
+    auto parseArgs = [ & ]() -> auto&
+    {
+      if ( tokenIndex >= (size_t)parseResult.numTokens )
+      {
+        return call.words.emplace_back(
+          Word{ .type = Word::Type::ERROR,
+                .location = make_source_location( context.file,
+                                                  parseResult.commandStart +
+                                                    parseResult.commentSize ),
+                .text = "Expected list!",
+                .data{} } );
+      }
+
+      auto word = WordToList( interp,
+                              context,
+                              ParseWord( interp,
+                                         context,
+                                         parseResult,
+                                         tokenIndex ) );
+
+      // If we recognised some sort of list, parse the second level (as args is
+      // a list-of-lists)
+      if ( word.type == Word::Type::LIST )
+      {
+        auto& vec = std::get< Word::WordVec >( word.data );
+        Word::WordVec parsedArgs;
+        parsedArgs.reserve( vec.size() );
+        for( auto& arg : vec  )
+        {
+          parsedArgs.emplace_back( WordToList( interp,
+                                               context,
+                                               std::move( arg ) ) );
+        }
+        word.data = std::move( parsedArgs );
+      }
+
+      return call.words.emplace_back( std::move( word ) );
+    };
+
     auto parseBody = [ & ]() -> auto&
     {
       if ( tokenIndex >= (size_t)parseResult.numTokens )
@@ -267,7 +374,7 @@ namespace Parser
       if ( cmdWord.text == "proc" && parseResult.numWords == 4 )
       {
         parseWord();  // name
-        parseWord();  // arguments TODO: parseScopeArgs() ?
+        parseArgs();  // arguments TODO: parseScopeArgs() ?
         parseBody();  // body
       }
       else if ( cmdWord.text == "while" && parseResult.numWords == 3 )
@@ -287,6 +394,17 @@ namespace Parser
         parseWord();  // { x y } // TODO: parseScopeArgs()
         parseWord();  // $list
         parseBody();  // loop body
+      }
+      else if ( cmdWord.text == "namespace" && parseResult.numWords > 1 )
+      {
+        auto& subCmd = parseWord();
+        if ( subCmd.type == Word::Type::TEXT &&
+             subCmd.text == "eval" &&
+             parseResult.numWords == 4 )
+        {
+          parseWord();
+          parseBody();
+        }
       }
 
       // TODO: Interesting cases:

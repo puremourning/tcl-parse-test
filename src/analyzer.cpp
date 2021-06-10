@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstddef>
 #include <memory>
+#include <sstream>
 #include <string_view>
 #include <tuple>
 #include <typeinfo>
@@ -19,6 +20,8 @@
 
 #include "source_location.cpp"
 #include "script.cpp"
+#include "index.cpp"
+#include "tclInt.h"
 
 namespace Parser
 {
@@ -153,6 +156,27 @@ int main( int argc, char** argv )
   //
   // 4. Coroutines... eh.
   //
+
+
+  // TODO: pass the index to the parser, and have the parser inject found procs?
+  //       or maybe it really is better to just scan twice: once to discover and
+  //       once to find references
+  Index::Index index = Index::make_index();
+  Index::ScanContext scanContext{
+    .nsPath = { index.global_namespace_id }
+  };
+  Index::Build( index, scanContext, script );
+
+  for( auto& ns : index.namespaces )
+  {
+    std::cout<< "Namespace: " << Index::GetPrintName( index, ns ) << '\n';
+  }
+
+  for( auto& proc : index.procs )
+  {
+    std::cout<< "Proc: " << Index::GetPrintName( index, proc ) << '\n';
+  }
+
 
   Tcl_DeleteInterp( interp );
 
