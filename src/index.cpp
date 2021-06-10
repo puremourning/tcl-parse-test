@@ -93,17 +93,20 @@ namespace Index
   std::vector<std::string_view> SplitPath( std::string_view path )
   {
     std::vector<std::string_view> vec;
-
-    std::string_view::size_type last = 0;
-    std::string_view::size_type next = 0;
-
-    while ( ( next = path.find( "::", last ) != std::string_view::npos ) )
+    std::string_view::size_type start = 0;
+    for( std::string_view::size_type cur = 0;
+         cur < path.length();
+         ++cur )
     {
-      vec.push_back( path.substr( last, next ) );
-      last = next + 2;
+      if ( path[ cur ] == ':' && cur+1 < path.length() && path[ cur+1 ] == ':' )
+      {
+        vec.push_back( path.substr( start, cur - start ) );
+        cur ++;
+        start = cur + 1;
+      }
     }
 
-    vec.push_back( path.substr( last ) );
+    vec.push_back( path.substr( start ) );
 
     return vec;
   }

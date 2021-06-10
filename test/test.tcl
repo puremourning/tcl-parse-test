@@ -12,6 +12,10 @@ namespace eval Test {
   proc Toaster { t } {
     ttttt
   }
+
+  namespace eval Test2 {
+    proc TeaserTrailer2 {} {}
+  }
 }
 
 proc Test::PublicProc { moon { shine "shone" } } {
@@ -35,6 +39,9 @@ proc LikeAStar { x } {
 
 foreach { moon shiner } $SHINERS {
   Test::PublicProc $moon $shiner
+}
+
+proc All::The::Sailors::Say::Hi { hi } {
 }
 
 set C sea
