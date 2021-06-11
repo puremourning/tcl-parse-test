@@ -1,7 +1,7 @@
 TCL ?= tcl
 DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra
 RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
-ASANFLAGS=-fsanitize=address,undefined $(DEBUGFLAGS)
+ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
 
 BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 
 
@@ -14,14 +14,21 @@ ANALYZER_SOURCES=src/analyzer.cpp \
 				 src/script.cpp \
 				 src/index.cpp
 
+BUILD_INF=Makefile
+
+CPPFLAGS=$(BASICFLAGS)
 ifeq ($(TARGET),debug)
-	ifeq ($(ASAN),)
-		CPPFLAGS=$(BASICFLAGS) $(DEBUGFLAGS)
-	else
-		CPPFLAGS=$(BASICFLAGS) $(ASANFLAGS)
+	ifeq ($(NOASAN),)
+		ASAN=1
 	endif
+
+	CPPFLAGS+=$(DEBUGFLAGS)
 else
-	CPPFLAGS=$(BASICFLAGS) $(RELEASEFLAGS)
+	CPPFLAGS+=$(RELEASEFLAGS)
+endif
+
+ifeq ($(ASAN),1)
+	CPPFLAGS+=$(ASANFLAGS)
 endif
 
 LDFLAGS=-L$(TCL)/unix -ltcl9.0 -lz  -lpthread -framework CoreFoundation
@@ -43,10 +50,10 @@ help:
 	@echo "Builds into ./debug or ./release (depending on TARGET)"
 	@echo ""
 
-$(TARGET)/parse: src/parse.cpp
+$(TARGET)/parse: src/parse.cpp $(BUILD_INF)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
 
-$(TARGET)/analyzer: $(ANALYZER_SOURCES)
+$(TARGET)/analyzer: $(ANALYZER_SOURCES) $(BUILD_INF)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
 
 $(TARGET):
