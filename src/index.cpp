@@ -216,8 +216,8 @@ namespace Index
     index.variables.reserve( 1024 * 1024 * 1024 );
 
     auto& global_namespace = index.namespaces.emplace_back( Namespace{
+      .id = AllocateID<Namespace>(),
       .name = "<global>",
-      .id = AllocateID<Namespace>()
     } );
 
     index.global_namespace_id = global_namespace.id;
@@ -386,17 +386,17 @@ namespace Index
           }
 
           auto& v = index.variables.emplace_back( Variable{
-            .name = std::move( argName ),
             .id = AllocateID<Variable>(),
+            .name = std::move( argName ),
           } );
           args.push_back( v.id );
         }
       }
       auto qn = SplitName( words[ 1 ].text );
       auto& proc = index.procs.emplace_back( Proc{
+        .id = AllocateID<Proc>(),
         .name = qn.name,
         .arguments{ std::move( args ) },
-        .id = AllocateID<Proc>(),
       } );
 
       if ( qn.IsAbs() || qn.ns )
@@ -441,8 +441,8 @@ namespace Index
                call.words[ 2 ].type == Word::Type::TEXT )
           {
             QualifiedName qn = {
+              .ns = std::string( call.words[ 2 ].text ),
               .name = "",
-              .ns = std::string( call.words[ 2 ].text )
             };
             context.nsPath.push_back( ResolveNamespace( index, qn, ns ).id );
             ScanWord( index, context, call.words[ 3 ] );
@@ -595,7 +595,7 @@ namespace Index
       // Add a reference to the proc being called if we can
       if ( call.words[ 0 ].type == Word::Type::TEXT )
       {
-        auto& cmdName = call.words[ 0 ].text;
+        //auto& cmdName = call.words[ 0 ].text;
 
         // if ( Proc* proc = Find( index.procs, context, cmdName ) )
         // {
