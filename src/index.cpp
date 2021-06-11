@@ -211,9 +211,9 @@ namespace Index
     // something else, like a memory mapped file, or never use pointers to them,
     // always copy the whole thing ?
     //
-    index.namespaces.reserve( 1024 * 1024 * 1024 );
-    index.procs.reserve( 1024 * 1024 * 1024 );
-    index.variables.reserve( 1024 * 1024 * 1024 );
+    index.namespaces.reserve( 1024 );
+    index.procs.reserve( 1024 );
+    index.variables.reserve( 1024 );
 
     auto& global_namespace = index.namespaces.emplace_back( Namespace{
       .id = AllocateID<Namespace>(),
