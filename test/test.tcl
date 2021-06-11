@@ -44,5 +44,8 @@ foreach { moon shiner } $SHINERS {
 proc All::The::Sailors::Say::Hi { hi } {
 }
 
+proc ::All::The::Sailors::Say::HelloSailor { hi } {
+}
+
 set C sea
 lappend SHINERS {*}[list A B $C]

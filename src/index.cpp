@@ -316,12 +316,16 @@ namespace Index
                                const QualifiedName& qn,
                                Namespace& ns )
   {
-    auto parts = SplitPath( *qn.ns );
     Namespace* current = &ns;
+    std::vector<std::string_view> parts;
     if ( qn.IsAbs() )
     {
       current = Get( index.namespaces, index.global_namespace_id );
-      parts.erase( parts.begin() ); // FIXME: ugh inefficient - use index
+      parts = SplitPath( std::string_view( *qn.ns  ).substr( 2 ) );
+    }
+    else
+    {
+      parts = SplitPath( *qn.ns );
     }
 
     for ( auto part : parts )
