@@ -183,15 +183,24 @@ namespace Index
     inline static ID next_id = 1;
   };
 
+  // FIXME: Using heap allocation here is just laziness. It allows me to extract
+  // pointers from the Db and use them while manipulating the tables. it isn't
+  // actually needed, and it's basically a massive performance drain to avoid
+  // typing. Solution might be so just make a macro that gets one of these
+  // things and always use that. But for now we hammer malloc until it goes blue
+  // in the face.
+  template< typename T >
+  using Table = std::vector< std::unique_ptr< T > >;
+
   struct Index
   {
-    std::vector< Namespace > namespaces;
-    std::vector< Proc > procs;
-    std::vector< Variable > variables;
+    Table< Namespace > namespaces;
+    Table< Proc > procs;
+    Table< Variable > variables;
 
-    std::vector< Namespace::Reference > nsrefs;
-    std::vector< Variable::Reference > vrefs;
-    std::vector< Proc::Reference > prefs;
+    Table< Namespace::Reference > nsrefs;
+    Table< Variable::Reference > vrefs;
+    Table< Proc::Reference > prefs;
 
     NamespaceID global_namespace_id;
   } index;
@@ -208,19 +217,19 @@ namespace Index
 
     //
     // FIXME: Eveerything blows up if these vectors ever resize. Switch to
-    // something else, like a memory mapped file, or never use pointers to them,
-    // always copy the whole thing ?
+    // something else, list a vector of heap-allocated things, use a slab
+    // allocator? or maybe a absl::node_hash_map.
     //
-    index.namespaces.reserve( 1024 );
+    index.namespaces.reserve( 20 );
     index.procs.reserve( 1024 );
-    index.variables.reserve( 1024 );
+    index.variables.reserve( 1024 * 1024 );
 
-    auto& global_namespace = index.namespaces.emplace_back( Namespace{
+    auto& global_namespace = index.namespaces.emplace_back( new Namespace{
       .id = AllocateID<Namespace>(),
       .name = "<global>",
     } );
 
-    index.global_namespace_id = global_namespace.id;
+    index.global_namespace_id = global_namespace->id;
 
     return index;
   }
@@ -264,13 +273,14 @@ namespace Index
   }
 
   template< typename Entity >
-  Entity* Get( std::vector< Entity >& db, typename Entity::ID id )
+  Entity* Get( Table< Entity >& db, typename Entity::ID id )
   {
-    auto pos = std::find_if( db.begin(), db.end(), [id]( auto entity ) {
-      return entity.id == id;
-    } );
+    if ( id < 1 || id > db.size() )
+    {
+      return nullptr;
+    }
 
-    return pos == db.end() ? nullptr : &(*pos);
+    return db.at( id - 1 ).get();
   }
 
   template< typename Entity >
@@ -316,11 +326,11 @@ namespace Index
                                const QualifiedName& qn,
                                Namespace& ns )
   {
-    Namespace* current = &ns;
+    auto cur_id = ns.id;
     std::vector<std::string_view> parts;
     if ( qn.IsAbs() )
     {
-      current = Get( index.namespaces, index.global_namespace_id );
+      cur_id = index.global_namespace_id;
       parts = SplitPath( std::string_view( *qn.ns  ).substr( 2 ) );
     }
     else
@@ -330,9 +340,7 @@ namespace Index
 
     for ( auto part : parts )
     {
-      assert( current &&
-              "Must have a valid current namespace in resovle search" );
-
+      auto* current = Get( index.namespaces, cur_id );
       auto& children = current->child_namespaces;
       auto child_pos = std::find_if(
         children.begin(),
@@ -343,23 +351,21 @@ namespace Index
 
       if ( child_pos == children.end() )
       {
-        auto& child = index.namespaces.emplace_back( Namespace{
+        auto& child = *index.namespaces.emplace_back( new Namespace{
           .id = AllocateID<Namespace>(),
           .name{ part },
           .parent_namespace = current->id,
         } );
         children.push_back( child.id );
-        current = &child;
+        cur_id = child.id;
       }
       else
       {
-        current = Get( index.namespaces, *child_pos );
+        cur_id = *child_pos;
       }
     }
 
-    assert( current && "Must have a valid result from resolve search" );
-
-    return *current;
+    return *Get( index.namespaces, cur_id );
   }
 
   template< typename WordVec >
@@ -389,7 +395,7 @@ namespace Index
             argName = std::get< Word::WordVec >( arg.data )[ 0 ].text;
           }
 
-          auto& v = index.variables.emplace_back( Variable{
+          auto& v = *index.variables.emplace_back( new Variable{
             .id = AllocateID<Variable>(),
             .name = std::move( argName ),
           } );
@@ -397,7 +403,7 @@ namespace Index
         }
       }
       auto qn = SplitName( words[ 1 ].text );
-      auto& proc = index.procs.emplace_back( Proc{
+      auto& proc = *index.procs.emplace_back( new Proc{
         .id = AllocateID<Proc>(),
         .name = qn.name,
         .arguments{ std::move( args ) },

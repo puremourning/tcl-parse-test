@@ -169,12 +169,12 @@ int main( int argc, char** argv )
 
   for( auto& ns : index.namespaces )
   {
-    std::cout<< "Namespace: " << Index::GetPrintName( index, ns ) << '\n';
+    std::cout<< "Namespace: " << Index::GetPrintName( index, *ns ) << '\n';
   }
 
   for( auto& proc : index.procs )
   {
-    std::cout<< "Proc: " << Index::GetPrintName( index, proc ) << '\n';
+    std::cout<< "Proc: " << Index::GetPrintName( index, *proc ) << '\n';
   }
 
 
