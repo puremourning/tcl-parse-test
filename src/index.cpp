@@ -203,7 +203,7 @@ namespace Index
     Table< Proc::Reference > prefs;
 
     NamespaceID global_namespace_id;
-  } index;
+  };
 
   template<typename Entity>
   auto AllocateID() -> typename Entity::ID
