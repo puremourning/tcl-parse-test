@@ -273,14 +273,15 @@ namespace Index
   }
 
   template< typename Entity >
-  Entity* Get( Table< Entity >& db, typename Entity::ID id )
+  Entity& Get( Table< Entity >& db, typename Entity::ID id )
   {
     if ( id < 1 || id > db.size() )
     {
-      return nullptr;
+      assert( false && "Invalid id" );
+      abort();
     }
 
-    return db.at( id - 1 ).get();
+    return *db.at( id - 1 ).get();
   }
 
   template< typename Entity >
@@ -303,9 +304,9 @@ namespace Index
     std::optional<NamespaceID> curr_id = e.parent_namespace;
     while ( curr_id )
     {
-      Namespace* curr = Get( index.namespaces, *curr_id );
-      parts.push_back( curr->name );
-      curr_id = curr->parent_namespace;
+      Namespace& curr = Get( index.namespaces, *curr_id );
+      parts.push_back( curr.name );
+      curr_id = curr.parent_namespace;
     }
 
     std::ostringstream o;
@@ -340,13 +341,13 @@ namespace Index
 
     for ( auto part : parts )
     {
-      auto* current = Get( index.namespaces, cur_id );
-      auto& children = current->child_namespaces;
+      auto& current = Get( index.namespaces, cur_id );
+      auto& children = current.child_namespaces;
       auto child_pos = std::find_if(
         children.begin(),
         children.end(),
         [&]( auto child_id ) {
-          return Get( index.namespaces, child_id )->name == part;
+          return Get( index.namespaces, child_id ).name == part;
         } );
 
       if ( child_pos == children.end() )
@@ -354,7 +355,7 @@ namespace Index
         auto& child = *index.namespaces.emplace_back( new Namespace{
           .id = AllocateID<Namespace>(),
           .name{ part },
-          .parent_namespace = current->id,
+          .parent_namespace = current.id,
         } );
         children.push_back( child.id );
         cur_id = child.id;
@@ -365,7 +366,7 @@ namespace Index
       }
     }
 
-    return *Get( index.namespaces, cur_id );
+    return Get( index.namespaces, cur_id );
   }
 
   template< typename WordVec >
@@ -431,7 +432,7 @@ namespace Index
     // Find namespace, proc and variable declarations
     for ( auto& call : script.commands )
     {
-      auto& ns = *Get( index.namespaces, context.nsPath.back() );
+      auto& ns = Get( index.namespaces, context.nsPath.back() );
 
       auto scanned = false;
 
