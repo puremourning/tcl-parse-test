@@ -116,7 +116,7 @@ int main( int argc, char** argv )
     return 1;
   }
 
-  Parser::ParseContext context{ std::move( mainFile ), "" };
+  Parser::ParseContext context{ std::move( mainFile ) };
   auto script = Parser::ParseScript( interp, context, context.file.contents );
 
   // Smenatics to add the tree:

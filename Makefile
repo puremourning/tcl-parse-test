@@ -3,10 +3,13 @@ DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra
 RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
 ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
 
-BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 
-
 # debug/release
 TARGET ?= debug
+ARCH ?= x86_64
+
+BUILD_DEST = $(TARGET)-$(ARCH)
+
+BASICFLAGS=-I$(TCL)/generic -I$(TCL)/unix -std=c++17 -arch $(ARCH)
 
 # put analyzer.cpp first, as this is the jubo TU
 ANALYZER_SOURCES=src/analyzer.cpp \
@@ -35,44 +38,48 @@ LDFLAGS=-L$(TCL)/unix -ltcl9.0 -lz  -lpthread -framework CoreFoundation
 
 .PHONY: all clean test help
 
-all: $(TARGET) $(TARGET)/parse $(TARGET)/analyzer
+all: $(BUILD_DEST) $(BUILD_DEST)/parse $(BUILD_DEST)/analyzer
 
 help:
 	@echo "Developer build. See also cmake."
 	@echo "--------------------------------"
 	@echo ""
-	@echo "make [all|clean|test] TARGET=(debug|release) [ASAN=1] - build/clean/test"
+	@echo "make [all|clean|test] TARGET=(debug|release) ARCH=(x86_64|arm64) [ASAN=1] - build/clean/test"
 	@echo "make show_<var> - print the make variable 'var'"
 	@echo ""
 	@echo "Default TARGET is debug"
+	@echo "Default ARCH is x86_64"
 	@echo "Default recipe is all"
 	@echo ""
-	@echo "Builds into ./debug or ./release (depending on TARGET)"
+	@echo "Builds into ./TARGET-ARCH, e.g. debug-arm64 or release-x86_64, etc."
 	@echo ""
 
-$(TARGET)/parse: src/parse.cpp $(BUILD_INF)
+$(BUILD_DEST)/parse: src/parse.cpp $(BUILD_INF)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
 
-$(TARGET)/analyzer: $(ANALYZER_SOURCES) $(BUILD_INF)
+$(BUILD_DEST)/analyzer: $(ANALYZER_SOURCES) $(BUILD_INF)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
 
-$(TARGET):
-	@if [ "$(TARGET)" = "release" ] || [ "$(TARGET)" = "debug" ]; then \
-		mkdir -p $(TARGET); \
-	else \
+$(BUILD_DEST):
+	@if [ "$(ARCH)" != "arm64" ] && [ "$(ARCH)" != "x86_64" ]; then\
+		echo "Invalid arch $(ARCH)"; \
+		false; \
+	elif [ "$(TARGET)" != "release" ] && [ "$(TARGET)" != "debug" ]; then \
 		echo "Invalid target $(TARGET)"; \
 		false; \
+	else \
+		mkdir -p $(TARGET)-$(ARCH); \
 	fi
 
 
 clean:
-	@echo Clean $(TARGET)/
-	@rm -rf $(TARGET)/analyzer $(TARGET)/analyzer.dSYM
-	@rm -rf $(TARGET)/parse $(TARGET)/parse.dSYM
-	@if [ -d $(TARGET)/ ]; then rmdir $(TARGET); fi
+	@echo Clean $(BUILD_DEST)/
+	@rm -rf $(BUILD_DEST)/analyzer $(BUILD_DEST)/analyzer.dSYM
+	@rm -rf $(BUILD_DEST)/parse $(BUILD_DEST)/parse.dSYM
+	@if [ -d $(BUILD_DEST)/ ]; then rmdir $(BUILD_DEST); fi
 
-test: $(TARGET)/analyzer
-	$(TARGET)/analyzer --test
+test: $(BUILD_DEST)/analyzer
+	$(BUILD_DEST)/analyzer --test
 
 show_%:
 	@echo ${$(@:show_%=%)}

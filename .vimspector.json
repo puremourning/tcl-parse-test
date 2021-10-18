@@ -6,11 +6,12 @@
       "variables": {
         "make": {
           "shell": [ "python3", "-m", "compiledb", "make", "TARGET=debug" ]
-        }
+        },
+        "arch": "x86_64"
       },
       "configuration": {
         "request": "launch",
-        "program": "${workspaceRoot}/debug/analyzer",
+        "program": "${workspaceRoot}/debug-$(ARCH)/analyzer",
         "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
         "stopOnEntry#json": "${StopOnEntry:false}",

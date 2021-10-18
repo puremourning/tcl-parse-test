@@ -19,9 +19,6 @@ namespace Parser
   struct ParseContext
   {
     SourceFile file;
-    std::string ns;
-
-    ParseContext( const ParseContext& other ) = delete;
   };
 
   struct Script;
@@ -211,7 +208,7 @@ namespace Parser
     size_t length = word.text.length();
     const char* prevList = nullptr;
     const char* last = list + length;
-    int size;
+    size_t size;
     const char* element;
 
     Word::WordVec vec;
