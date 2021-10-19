@@ -4,7 +4,7 @@
 compile_commands.json
 root/
 .cache/
-release/
-debug/
+release-*/
+debug-*/
 build/
 build-*/
