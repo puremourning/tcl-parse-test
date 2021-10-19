@@ -20,6 +20,7 @@
 
 #include "source_location.cpp"
 #include "script.cpp"
+#include "db.cpp"
 #include "index.cpp"
 #include "tclInt.h"
 
@@ -167,14 +168,20 @@ int main( int argc, char** argv )
   };
   Index::Build( index, scanContext, script );
 
-  for( auto& ns : index.namespaces )
+  for( auto& kv : index.namespaces.byName )
   {
-    std::cout<< "Namespace: " << Index::GetPrintName( index, *ns ) << '\n';
+    std::cout
+      << "Namespace: "
+      << Index::GetPrintName( index,
+                              index.namespaces.Get( kv.second ) ) << '\n';
   }
 
-  for( auto& proc : index.procs )
+  for( auto& kv : index.procs.byName )
   {
-    std::cout<< "Proc: " << Index::GetPrintName( index, *proc ) << '\n';
+    std::cout
+      << "Proc: "
+      << Index::GetPrintName( index,
+                              index.procs.Get( kv.second ) ) << '\n';
   }
 
 

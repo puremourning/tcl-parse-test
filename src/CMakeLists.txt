@@ -1,6 +1,6 @@
 add_executable( analyzer )
 
-set( SOURCES script.cpp source_location.cpp index.cpp )
+set( SOURCES script.cpp source_location.cpp index.cpp db.cpp )
 
 target_sources( analyzer
   PRIVATE

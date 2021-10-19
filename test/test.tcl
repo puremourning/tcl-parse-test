@@ -49,3 +49,8 @@ proc ::All::The::Sailors::Say::HelloSailor { hi } {
 
 set C sea
 lappend SHINERS {*}[list A B $C]
+
+proc ::XXX::AAA {} {}
+proc ::XXX::XXX {} {}
+proc ::AAA::XXX {} {}
+proc ::AAA::AAA {} {}

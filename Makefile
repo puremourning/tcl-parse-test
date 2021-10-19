@@ -11,13 +11,15 @@ ARCH ?= x86_64
 BUILD_DEST = $(TARGET)-$(ARCH)
 BIN_DIR = $(BUILD_DEST)/bin
 
-BASICFLAGS=-I$(BUILD_DEST)/include -I$(TCL)/generic -I$(TCL)/unix -std=c++17 -arch $(ARCH)
+BASICFLAGS=-I$(BUILD_DEST)/include -I$(TCL)/generic -I$(TCL)/unix \
+		   -std=c++17 -arch $(ARCH)
 
 # put analyzer.cpp first, as this is the jubo TU
 ANALYZER_SOURCES=src/analyzer.cpp \
 				 src/source_location.cpp \
 				 src/script.cpp \
-				 src/index.cpp
+				 src/index.cpp \
+				 src/db.cpp
 
 BUILD_INF=Makefile
 
@@ -68,7 +70,7 @@ $(TCL_LIB): $(BUILD_DEST) $(TCL_SOURCES)
 					--disable-framework && \
 		$(MAKE) clean && \
 		$(MAKE) && \
-		$(MAKE) install
+		$(MAKE) install-binaries
 
 $(BIN_DIR)/parse: src/parse.cpp $(BUILD_INF) $(TCL_LIB)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
@@ -91,6 +93,10 @@ $(BUILD_DEST):
 
 clean:
 	@echo Clean $(BUILD_DEST)/
+	rm -f $(BIN_DIR)/analyzer
+	rm -f $(BIN_DIR)/parse
+
+distclean: clean
 	@rm -rf $(BUILD_DEST)
 	@cd $(TCL)/unix && $(MAKE) clean
 

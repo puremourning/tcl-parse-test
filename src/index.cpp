@@ -1,5 +1,6 @@
 #include "script.cpp"
 #include "source_location.cpp"
+#include "db.cpp"
 #include "tclDecls.h"
 #include "tclInt.h"
 #include <_types/_uint64_t.h>
@@ -11,6 +12,8 @@
 #include <sstream>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
+#include <map>
 #include <variant>
 #include <vector>
 #include <string>
@@ -134,8 +137,6 @@ namespace Index
       Parser::SourceLocation location;
       VariableID variable;
     };
-
-    inline static ID next_id = 1;
   };
 
   struct Scope
@@ -160,8 +161,6 @@ namespace Index
       Parser::SourceLocation location;
       ProcID proc;
     };
-
-    inline static ID next_id = 1;
   };
 
   struct Namespace
@@ -179,57 +178,34 @@ namespace Index
       Parser::SourceLocation location;
       NamespaceID ns;
     };
-
-    inline static ID next_id = 1;
   };
-
-  // FIXME: Using heap allocation here is just laziness. It allows me to extract
-  // pointers from the Db and use them while manipulating the tables. it isn't
-  // actually needed, and it's basically a massive performance drain to avoid
-  // typing. Solution might be so just make a macro that gets one of these
-  // things and always use that. But for now we hammer malloc until it goes blue
-  // in the face.
-  template< typename T >
-  using Table = std::vector< std::unique_ptr< T > >;
 
   struct Index
   {
-    Table< Namespace > namespaces;
-    Table< Proc > procs;
-    Table< Variable > variables;
+    DB::Record< Namespace > namespaces;
+    DB::Record< Proc > procs;
+    DB::Record< Variable > variables;
 
-    Table< Namespace::Reference > nsrefs;
-    Table< Variable::Reference > vrefs;
-    Table< Proc::Reference > prefs;
+    // Table< Namespace::Reference > nsrefs;
+    // Table< Variable::Reference > vrefs;
+    // Table< Proc::Reference > prefs;
 
     NamespaceID global_namespace_id;
   };
-
-  template<typename Entity>
-  auto AllocateID() -> typename Entity::ID
-  {
-    return Entity::next_id++;
-  }
 
   Index make_index()
   {
     Index index{};
 
-    //
-    // FIXME: Eveerything blows up if these vectors ever resize. Switch to
-    // something else, list a vector of heap-allocated things, use a slab
-    // allocator? or maybe a absl::node_hash_map.
-    //
-    index.namespaces.reserve( 20 );
-    index.procs.reserve( 1024 );
-    index.variables.reserve( 1024 * 1024 );
+    index.namespaces.table.reserve( 20 );
+    index.procs.table.reserve( 1024 );
+    index.variables.table.reserve( 1024 * 1024 );
 
-    auto& global_namespace = index.namespaces.emplace_back( new Namespace{
-      .id = AllocateID<Namespace>(),
+    auto& global_namespace = index.namespaces.Insert( new Namespace{
       .name = "<global>",
     } );
 
-    index.global_namespace_id = global_namespace->id;
+    index.global_namespace_id = global_namespace.id;
 
     return index;
   }
@@ -272,17 +248,6 @@ namespace Index
     }
   }
 
-  template< typename Entity >
-  Entity& Get( Table< Entity >& db, typename Entity::ID id )
-  {
-    if ( id < 1 || id > db.size() )
-    {
-      assert( false && "Invalid id" );
-      abort();
-    }
-
-    return *db.at( id - 1 ).get();
-  }
 
   template< typename Entity >
   std::string GetPrintName( Index& index, const Entity& e )
@@ -304,7 +269,7 @@ namespace Index
     std::optional<NamespaceID> curr_id = e.parent_namespace;
     while ( curr_id )
     {
-      Namespace& curr = Get( index.namespaces, *curr_id );
+      Namespace& curr = index.namespaces.Get( *curr_id );
       parts.push_back( curr.name );
       curr_id = curr.parent_namespace;
     }
@@ -341,19 +306,18 @@ namespace Index
 
     for ( auto part : parts )
     {
-      auto& current = Get( index.namespaces, cur_id );
+      auto& current = index.namespaces.Get( cur_id );
       auto& children = current.child_namespaces;
       auto child_pos = std::find_if(
         children.begin(),
         children.end(),
         [&]( auto child_id ) {
-          return Get( index.namespaces, child_id ).name == part;
+          return index.namespaces.Get( child_id ).name == part;
         } );
 
       if ( child_pos == children.end() )
       {
-        auto& child = *index.namespaces.emplace_back( new Namespace{
-          .id = AllocateID<Namespace>(),
+        auto& child = index.namespaces.Insert( new Namespace{
           .name{ part },
           .parent_namespace = current.id,
         } );
@@ -366,7 +330,7 @@ namespace Index
       }
     }
 
-    return Get( index.namespaces, cur_id );
+    return index.namespaces.Get( cur_id );
   }
 
   template< typename WordVec >
@@ -396,16 +360,14 @@ namespace Index
             argName = std::get< Word::WordVec >( arg.data )[ 0 ].text;
           }
 
-          auto& v = *index.variables.emplace_back( new Variable{
-            .id = AllocateID<Variable>(),
+          auto& v = index.variables.Insert( new Variable{
             .name = std::move( argName ),
           } );
           args.push_back( v.id );
         }
       }
       auto qn = SplitName( words[ 1 ].text );
-      auto& proc = *index.procs.emplace_back( new Proc{
-        .id = AllocateID<Proc>(),
+      auto& proc = index.procs.Insert( new Proc{
         .name = qn.name,
         .arguments{ std::move( args ) },
       } );
@@ -432,7 +394,7 @@ namespace Index
     // Find namespace, proc and variable declarations
     for ( auto& call : script.commands )
     {
-      auto& ns = Get( index.namespaces, context.nsPath.back() );
+      auto& ns = index.namespaces.Get( context.nsPath.back() );
 
       auto scanned = false;
 
@@ -606,13 +568,13 @@ namespace Index
       // Add a reference to the proc being called if we can
       if ( call.words[ 0 ].type == Word::Type::TEXT )
       {
-        //auto& cmdName = call.words[ 0 ].text;
+        // auto& cmdName = call.words[ 0 ].text;
 
         // if ( Proc* proc = Find( index.procs, context, cmdName ) )
         // {
-        //   // AddCommandReference( index,
-        //   //                      *proc,
-        //   //                      call.words[ 0 ].location );
+        //   AddCommandReference( index,
+        //                        *proc,
+        //                        call.words[ 0 ].location );
         // }
       }
 
