@@ -3,15 +3,28 @@
     "Run": {
       "adapter": "CodeLLDB",
       "default": true,
-      "variables": {
-        "make": {
-          "shell": [ "python3", "-m", "compiledb", "make", "TARGET=debug" ]
+      "variables": [
+        {
+          "arch": "x86_64"
         },
-        "arch": "x86_64"
-      },
+        {
+          "prog": "${workspaceRoot}/debug-${arch}/bin/analyzer"
+        },
+        {
+          "make": {
+            "shell": [
+              "python3",
+              "-m", "compiledb",
+              "make",
+              "TARGET=debug",
+              "${prog}"
+            ]
+          }
+        }
+      ],
       "configuration": {
         "request": "launch",
-        "program": "${workspaceRoot}/debug-$(ARCH)/analyzer",
+        "program": "${prog}",
         "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
         "stopOnEntry#json": "${StopOnEntry:false}",
