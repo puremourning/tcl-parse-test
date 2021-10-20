@@ -28,7 +28,10 @@
         "args": [ "*${args}" ],
         "cwd": "${workspaceRoot}",
         "stopOnEntry#json": "${StopOnEntry:false}",
-        "expressions": "native"
+        "expressions": "native",
+        "preRunCommands": [
+          "type summary add -o \"return bytes( valobj.GetChildMemberWithName( '__data' ).GetPointeeData( 0, int(valobj.GetChildMemberWithName( '__size' ).value) ).uint8s ).decode( 'utf-8' )\" -x std::.*::basic_string_view std::.*::string_view"
+        ]
       }
     },
     "Attach container": {
