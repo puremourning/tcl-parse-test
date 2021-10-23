@@ -32,8 +32,8 @@ namespace DB
   using SortIndex = std::multimap< TKey, TValue >;
 
   // FIXME: Lazy standard library containers
-  template< typename T>
-  using FreeList = std::deque<T>;
+  template< typename T >
+  using FreeList = std::deque< T >;
 
   template< typename TRow >
   struct Record
@@ -48,7 +48,7 @@ namespace DB
     Row& Insert( Args&&... args )
     {
       const auto id = table.size() + 1;
-      auto& row = table.emplace_back( std::forward<Args...>( args )... );
+      auto& row = table.emplace_back( std::forward< Args... >( args )... );
       row->id = id;
       byName.emplace( row->name, id );
       return *row;
@@ -73,4 +73,4 @@ namespace DB
     }
     // FreeList<size_t> free_;
   };
-}
+}  // namespace DB

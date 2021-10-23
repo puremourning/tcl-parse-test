@@ -84,117 +84,117 @@ namespace Parser
 
     switch ( token.type )
     {
-    case TCL_TOKEN_SIMPLE_WORD:
-    {
-
-      // contains a single "text" token - ignore this token and take the
-      // contents.
-      //
-      // Examples
-      //   TCL_TOKEN_SIMPLE_WORD: `{\nx y z\n}`
-      //     TCL_TOKEN_TEXT: `\nx y z\n`
-      //
-      //   TCL_TOKEN_SIMPLE_WORD: foreach
-      //     TCL_TOKEN_TEXT: foreach
-      //
-      assert( token.numComponents == 1 );
-      word = ParseWord( interp, context, parseResult, nextToken );
-      break;
-    }
-
-    case TCL_TOKEN_WORD:
-    case TCL_TOKEN_EXPAND_WORD:
-    {
-      // contains pretty much everything else.
-      if ( token.type == TCL_TOKEN_EXPAND_WORD )
+      case TCL_TOKEN_SIMPLE_WORD:
       {
-        word.type = Word::Type::EXPAND;
-      }
-      else
-      {
-        word.type = Word::Type::TOKEN_LIST;
-      }
-      word.location = make_source_location( context.file, token.start );
-      word.text = std::string_view{ token.start, (size_t)token.size };
-      auto& vec = word.data.emplace< Word::WordVec >();
-      vec.reserve( token.numComponents );
 
-      size_t maxToken = nextToken + token.numComponents;
-      while ( nextToken < maxToken )
-      {
-        vec.emplace_back(
-          ParseWord( interp, context, parseResult, nextToken ) );
-      }
-      break;
-    }
-
-    case TCL_TOKEN_TEXT:
-    case TCL_TOKEN_BS:
-    {
-      word.type = Word::Type::TEXT;
-      word.text = std::string_view{ token.start, (size_t)token.size };
-      word.location = make_source_location( context.file, token.start );
-      break;
-    }
-
-    case TCL_TOKEN_COMMAND:
-    {
-      word.type = Word::Type::SCRIPT;
-      word.text = std::string_view{ token.start, (size_t)token.size };
-      word.location = make_source_location( context.file, token.start );
-
-      // A command like `[ a b c ]`
-      //
-      // NOTE: The text of TCL_TOKEN_COMMAND includes the [ and the ]. We need
-      // to parse only the contents of the command, so we use start + 1 and
-      // legth - 2 to ignore the [ and the ] to get the `a b c`
-      word.data = std::make_unique< Script >(
-        ParseScript( interp,
-                     context,
-                     { token.start + 1, (size_t)token.size - 2 } ) );
-
-      break;
-    }
-
-    case TCL_TOKEN_VARIABLE:
-    {
-      // Usually contains a single TCL_TOKEN_TEXT, but might contain more if
-      // it's an array
-      if ( token.numComponents == 1 )
-      {
-        // scalar, just take the text
+        // contains a single "text" token - ignore this token and take the
+        // contents.
+        //
+        // Examples
+        //   TCL_TOKEN_SIMPLE_WORD: `{\nx y z\n}`
+        //     TCL_TOKEN_TEXT: `\nx y z\n`
+        //
+        //   TCL_TOKEN_SIMPLE_WORD: foreach
+        //     TCL_TOKEN_TEXT: foreach
+        //
+        assert( token.numComponents == 1 );
         word = ParseWord( interp, context, parseResult, nextToken );
-        word.type = Word::Type::VARIABLE;
+        break;
       }
-      else
+
+      case TCL_TOKEN_WORD:
+      case TCL_TOKEN_EXPAND_WORD:
       {
-        // Array - TCL_TOKEN_TEXT, followed by a list of other things that
-        // make up the array index
-        word.type = Word::Type::ARRAY_ACCESS;
+        // contains pretty much everything else.
+        if ( token.type == TCL_TOKEN_EXPAND_WORD )
+        {
+          word.type = Word::Type::EXPAND;
+        }
+        else
+        {
+          word.type = Word::Type::TOKEN_LIST;
+        }
+        word.location = make_source_location( context.file, token.start );
+        word.text = std::string_view{ token.start, (size_t)token.size };
+        auto& vec = word.data.emplace< Word::WordVec >();
+        vec.reserve( token.numComponents );
+
+        size_t maxToken = nextToken + token.numComponents;
+        while ( nextToken < maxToken )
+        {
+          vec.emplace_back(
+            ParseWord( interp, context, parseResult, nextToken ) );
+        }
+        break;
+      }
+
+      case TCL_TOKEN_TEXT:
+      case TCL_TOKEN_BS:
+      {
+        word.type = Word::Type::TEXT;
+        word.text = std::string_view{ token.start, (size_t)token.size };
+        word.location = make_source_location( context.file, token.start );
+        break;
+      }
+
+      case TCL_TOKEN_COMMAND:
+      {
+        word.type = Word::Type::SCRIPT;
         word.text = std::string_view{ token.start, (size_t)token.size };
         word.location = make_source_location( context.file, token.start );
 
-        size_t maxToken = nextToken + token.numComponents;
-        auto& arrayAccess = word.data.emplace< Word::ArrayAccess >();
+        // A command like `[ a b c ]`
+        //
+        // NOTE: The text of TCL_TOKEN_COMMAND includes the [ and the ]. We need
+        // to parse only the contents of the command, so we use start + 1 and
+        // legth - 2 to ignore the [ and the ] to get the `a b c`
+        word.data = std::make_unique< Script >(
+          ParseScript( interp,
+                       context,
+                       { token.start + 1, (size_t)token.size - 2 } ) );
 
-        Word name = ParseWord( interp, context, parseResult, nextToken );
-        assert( name.type == Word::Type::TEXT );
-        arrayAccess.name = name.text;
-
-        // Read the remainder into a word vector
-        while ( nextToken < maxToken )
-        {
-          arrayAccess.index.emplace_back(
-            ParseWord( interp, context, parseResult, nextToken ) );
-        }
+        break;
       }
-      break;
-    }
 
-    case TCL_TOKEN_SUB_EXPR:
-    case TCL_TOKEN_OPERATOR:
-      assert( false && "Unhandled case!" );
-      break;
+      case TCL_TOKEN_VARIABLE:
+      {
+        // Usually contains a single TCL_TOKEN_TEXT, but might contain more if
+        // it's an array
+        if ( token.numComponents == 1 )
+        {
+          // scalar, just take the text
+          word = ParseWord( interp, context, parseResult, nextToken );
+          word.type = Word::Type::VARIABLE;
+        }
+        else
+        {
+          // Array - TCL_TOKEN_TEXT, followed by a list of other things that
+          // make up the array index
+          word.type = Word::Type::ARRAY_ACCESS;
+          word.text = std::string_view{ token.start, (size_t)token.size };
+          word.location = make_source_location( context.file, token.start );
+
+          size_t maxToken = nextToken + token.numComponents;
+          auto& arrayAccess = word.data.emplace< Word::ArrayAccess >();
+
+          Word name = ParseWord( interp, context, parseResult, nextToken );
+          assert( name.type == Word::Type::TEXT );
+          arrayAccess.name = name.text;
+
+          // Read the remainder into a word vector
+          while ( nextToken < maxToken )
+          {
+            arrayAccess.index.emplace_back(
+              ParseWord( interp, context, parseResult, nextToken ) );
+          }
+        }
+        break;
+      }
+
+      case TCL_TOKEN_SUB_EXPR:
+      case TCL_TOKEN_OPERATOR:
+        assert( false && "Unhandled case!" );
+        break;
     }
 
     return word;
@@ -236,12 +236,11 @@ namespace Parser
       // defer this processing until we need it ? or say, this is specifically
       // for parsing function arguments. for now, leave it for the indexer to
       // =work out
-      vec.emplace_back( Word{
-        .type = Word::Type::TEXT,
-        .location = make_source_location( context.file, element ),
-        .text = { element, (size_t)( size ) },
-        .data{}
-      } );
+      vec.emplace_back(
+        Word{ .type = Word::Type::TEXT,
+              .location = make_source_location( context.file, element ),
+              .text = { element, (size_t)( size ) },
+              .data{} } );
     }
 
     if ( vec.size() == 1 )
@@ -275,7 +274,8 @@ namespace Parser
     //  Otherwise just parse all the words
 
     size_t tokenIndex = 0;
-    auto parseRest = [ & ]() {
+    auto parseRest = [ & ]()
+    {
       while ( tokenIndex < (size_t)parseResult.numTokens )
       {
         call.words.emplace_back(
@@ -313,12 +313,10 @@ namespace Parser
                 .data{} } );
       }
 
-      auto word = WordToList( interp,
-                              context,
-                              ParseWord( interp,
-                                         context,
-                                         parseResult,
-                                         tokenIndex ) );
+      auto word =
+        WordToList( interp,
+                    context,
+                    ParseWord( interp, context, parseResult, tokenIndex ) );
 
       // If we recognised some sort of list, parse the second level (as args is
       // a list-of-lists)
@@ -327,11 +325,10 @@ namespace Parser
         auto& vec = std::get< Word::WordVec >( word.data );
         Word::WordVec parsedArgs;
         parsedArgs.reserve( vec.size() );
-        for( auto& arg : vec  )
+        for ( auto& arg : vec )
         {
-          parsedArgs.emplace_back( WordToList( interp,
-                                               context,
-                                               std::move( arg ) ) );
+          parsedArgs.emplace_back(
+            WordToList( interp, context, std::move( arg ) ) );
         }
         word.data = std::move( parsedArgs );
       }
@@ -395,8 +392,7 @@ namespace Parser
       else if ( cmdWord.text == "namespace" && parseResult.numWords > 1 )
       {
         auto& subCmd = parseWord();
-        if ( subCmd.type == Word::Type::TEXT &&
-             subCmd.text == "eval" &&
+        if ( subCmd.type == Word::Type::TEXT && subCmd.text == "eval" &&
              parseResult.numWords == 4 )
         {
           parseWord();

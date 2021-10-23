@@ -23,18 +23,17 @@ namespace Index
 {
   struct Namespace;
 
-  std::vector<std::string_view> SplitPath( std::string_view path )
+  std::vector< std::string_view > SplitPath( std::string_view path )
   {
-    std::vector<std::string_view> vec;
+    std::vector< std::string_view > vec;
     std::string_view::size_type start = 0;
-    for( std::string_view::size_type cur = 0;
-         cur < path.length();
-         ++cur )
+    for ( std::string_view::size_type cur = 0; cur < path.length(); ++cur )
     {
-      if ( path[ cur ] == ':' && cur+1 < path.length() && path[ cur+1 ] == ':' )
+      if ( path[ cur ] == ':' && cur + 1 < path.length() &&
+           path[ cur + 1 ] == ':' )
       {
         vec.push_back( path.substr( start, cur - start ) );
-        cur ++;
+        cur++;
         start = cur + 1;
       }
     }
@@ -69,7 +68,7 @@ namespace Index
         return false;
       }
 
-      if( ns.value().substr(0, 2) == "::" )
+      if ( ns.value().substr( 0, 2 ) == "::" )
       {
         // Has a leading ::, like ::A::B
         return true;
@@ -86,11 +85,9 @@ namespace Index
         return *this;
       }
 
-      return QualifiedName{
-        .ns = std::string( current_path )
-            + ( ns.has_value() ? ns.value() : "" ),
-        .name = name
-      };
+      return QualifiedName{ .ns = std::string( current_path ) +
+                                  ( ns.has_value() ? ns.value() : "" ),
+                            .name = name };
     }
 
     std::string Path()
@@ -102,7 +99,7 @@ namespace Index
       return name;
     }
 
-    std::vector<std::string_view> Split() const
+    std::vector< std::string_view > Split() const
     {
       bool abs = IsAbs();
       if ( abs && !ns->empty() )
@@ -249,9 +246,7 @@ namespace Index
                    ScanContext& context,
                    const Parser::Script& script );
 
-  void ScanWord ( Index& index,
-                  ScanContext& context,
-                  const Parser::Word& word )
+  void ScanWord( Index& index, ScanContext& context, const Parser::Word& word )
   {
     using Word = Parser::Word;
     switch ( word.type )
@@ -259,7 +254,7 @@ namespace Index
       case Word::Type::EXPAND:
       case Word::Type::TOKEN_LIST:
       {
-        for( auto& subWord : std::get< Word::WordVec >( word.data ) )
+        for ( auto& subWord : std::get< Word::WordVec >( word.data ) )
         {
           ScanWord( index, context, subWord );
         }
@@ -267,13 +262,11 @@ namespace Index
       }
       case Word::Type::SCRIPT:
       {
-        ScanScript( index,
-                    context,
-                    *std::get< Word::ScriptPtr >( word.data ) );
+        ScanScript( index, context, *std::get< Word::ScriptPtr >( word.data ) );
         break;
       }
 
-      default: // ignore
+      default:  // ignore
         break;
     }
   }
@@ -283,8 +276,8 @@ namespace Index
   std::string GetPrintName( Index& index, const Entity& e )
   {
     constexpr bool is_opt =
-      std::is_same< decltype(e.parent_namespace),
-                    std::optional<typename Entity::ID>>();
+      std::is_same< decltype( e.parent_namespace ),
+                    std::optional< typename Entity::ID > >();
 
     if constexpr ( is_opt )
     {
@@ -294,9 +287,9 @@ namespace Index
       }
     }
 
-    std::vector<std::string_view> parts;
+    std::vector< std::string_view > parts;
     parts.push_back( e.name );
-    std::optional<NamespaceID> curr_id = e.parent_namespace;
+    std::optional< NamespaceID > curr_id = e.parent_namespace;
     while ( curr_id )
     {
       Namespace& curr = index.namespaces.Get( *curr_id );
@@ -305,7 +298,7 @@ namespace Index
     }
 
     std::ostringstream o;
-    for( auto i = parts.rbegin(); i != parts.rend(); ++i )
+    for ( auto i = parts.rbegin(); i != parts.rend(); ++i )
     {
       if ( i != parts.rbegin() )
       {
@@ -315,7 +308,6 @@ namespace Index
     }
 
     return o.str();
-
   }
 
   Namespace& ResolveNamespace( Index& index,
@@ -323,7 +315,7 @@ namespace Index
                                Namespace& ns )
   {
     auto cur_id = ns.id;
-    std::vector<std::string_view> parts = qn.Split();
+    std::vector< std::string_view > parts = qn.Split();
     if ( qn.IsAbs() )
     {
       cur_id = index.global_namespace_id;
@@ -333,12 +325,12 @@ namespace Index
     {
       auto& current = index.namespaces.Get( cur_id );
       auto& children = current.child_namespaces;
-      auto child_pos = std::find_if(
-        children.begin(),
-        children.end(),
-        [&]( auto child_id ) {
-          return index.namespaces.Get( child_id ).name == part;
-        } );
+      auto child_pos =
+        std::find_if( children.begin(),
+                      children.end(),
+                      [ & ]( auto child_id ) {
+                        return index.namespaces.Get( child_id ).name == part;
+                      } );
 
       if ( child_pos == children.end() )
       {
@@ -359,13 +351,10 @@ namespace Index
   }
 
   template< typename WordVec >
-  void AddProcToIndex( Index& index,
-                       Namespace& ns,
-                       const WordVec& words )
+  void AddProcToIndex( Index& index, Namespace& ns, const WordVec& words )
   {
     using Word = Parser::Word;
-    if ( words.size() == 4 &&
-         words[ 1 ].type == Word::Type::TEXT )
+    if ( words.size() == 4 && words[ 1 ].type == Word::Type::TEXT )
     {
       // proc name { arg|{ arg default } ... } { body }
       std::vector< VariableID > args;
@@ -373,7 +362,7 @@ namespace Index
       {
         auto& vec = std::get< Word::WordVec >( words[ 2 ].data );
         args.reserve( vec.size() );
-        for( auto& arg : vec )
+        for ( auto& arg : vec )
         {
           std::string argName;
           if ( arg.type == Word::Type::TEXT )
@@ -456,12 +445,10 @@ namespace Index
             //
             // if name already in scope, it's an update, otherwise, it's a
             // declaration
-
           }
         }
         else if ( cmdName == "array" )
         {
-
         }
         else if ( cmdName == "global" )
         {
@@ -502,15 +489,13 @@ namespace Index
         }
         else if ( cmdName == "upvar" )
         {
-
         }
         else if ( cmdName == "uplevel" )
         {
-
         }
       }
 
-      if ( ! scanned )
+      if ( !scanned )
       {
         for ( auto& word : call.words )
         {
@@ -524,35 +509,33 @@ namespace Index
                     ScanContext& context,
                     const Parser::Script& script );
 
-  void IndexWord ( Index& index,
-                   ScanContext& context,
-                   const Parser::Word& word )
+  void IndexWord( Index& index, ScanContext& context, const Parser::Word& word )
   {
     using Word = Parser::Word;
-    switch( word.type )
+    switch ( word.type )
     {
       case Word::Type::ARRAY_ACCESS:
       {
-        const auto& arrayAccess = std::get< Parser::Word::ArrayAccess >(
-          word.data );
+        const auto& arrayAccess =
+          std::get< Parser::Word::ArrayAccess >( word.data );
 
         // if ( auto v = Find( index.variables, context, arrayAccess.name ) )
         // {
         //   AddVariableReference( index, *v, word.location );
         // }
 
-        for( const auto& subWord : arrayAccess.index )
+        for ( const auto& subWord : arrayAccess.index )
         {
           IndexWord( index, context, subWord );
         }
         break;
       }
 
-      case Word::Type::EXPAND: // fall through
+      case Word::Type::EXPAND:  // fall through
       case Word::Type::TOKEN_LIST:
       {
         const auto& subWords = std::get< Word::WordVec >( word.data );
-        for( const auto& subWord : subWords )
+        for ( const auto& subWord : subWords )
         {
           IndexWord( index, context, subWord );
         }
@@ -587,9 +570,7 @@ namespace Index
     index.prefs.emplace_back( new Proc::Reference{ location, proc.id } );
   }
 
-  Proc *FindProc( Index& index,
-                  Namespace& ns,
-                  const std::string_view& cmdName )
+  Proc* FindProc( Index& index, Namespace& ns, const std::string_view& cmdName )
   {
     auto qn = SplitName( cmdName );
     Namespace::ID target_namespace = ns.id;
@@ -656,15 +637,13 @@ namespace Index
             scanned = true;
           }
         }
-        else if ( cmdName == "proc" &&
-                  call.words.size() > 3 &&
+        else if ( cmdName == "proc" && call.words.size() > 3 &&
                   call.words[ 1 ].type == Word::Type::TEXT &&
-                  call.words[ 3 ].type == Word::Type::SCRIPT)
+                  call.words[ 3 ].type == Word::Type::SCRIPT )
         {
           QualifiedName procName = SplitName( call.words[ 1 ].text );
-          context.nsPath.push_back( ResolveNamespace( index,
-                                                      procName,
-                                                      ns ).id );
+          context.nsPath.push_back(
+            ResolveNamespace( index, procName, ns ).id );
           IndexWord( index, context, call.words[ 3 ] );
           context.nsPath.pop_back();
           scanned = true;
@@ -673,16 +652,14 @@ namespace Index
         if ( Proc* proc = FindProc( index, ns, cmdName ) )
         {
           // Add a reference to the proc being called if we can
-          AddCommandReference( index,
-                               call.words[ 0 ].location,
-                               *proc );
+          AddCommandReference( index, call.words[ 0 ].location, *proc );
         }
       }
 
       // Add references to any variables that are in the command
-      if (!scanned)
+      if ( !scanned )
       {
-        for( const auto& word : call.words )
+        for ( const auto& word : call.words )
         {
           IndexWord( index, context, word );
         }
@@ -690,9 +667,7 @@ namespace Index
     }
   }
 
-  void Build( Index& index,
-              ScanContext& context,
-              const Parser::Script& script )
+  void Build( Index& index, ScanContext& context, const Parser::Script& script )
   {
     ScanScript( index, context, script );
     IndexScript( index, context, script );
@@ -716,56 +691,37 @@ namespace Index::Test
 
     std::vector< Test > tests = {
       { "Test", { {}, "Test" }, false, "Test" },
-      { "::Test", { {""}, "Test" }, true, "::Test" },
-      { "Test::Sub", { {"Test"}, "Sub" }, false, "Test::Sub" },
-      { "::Test::Sub", { {"::Test"}, "Sub" }, true, "::Test::Sub" },
+      { "::Test", { { "" }, "Test" }, true, "::Test" },
+      { "Test::Sub", { { "Test" }, "Sub" }, false, "Test::Sub" },
+      { "::Test::Sub", { { "::Test" }, "Sub" }, true, "::Test::Sub" },
     };
 
-    for( auto&& test : tests )
+    for ( auto&& test : tests )
     {
       QualifiedName qn = SplitName( test.lexeme );
       if ( qn.ns != test.expect.ns )
       {
-        std::cerr
-          << "Expected "
-          << test.lexeme
-          << " to have ns "
-          << ( test.expect.ns ? *test.expect.ns : "<unset>" )
-          << " but found "
-          << ( qn.ns ? *qn.ns : "<unset>" );
+        std::cerr << "Expected " << test.lexeme << " to have ns "
+                  << ( test.expect.ns ? *test.expect.ns : "<unset>" )
+                  << " but found " << ( qn.ns ? *qn.ns : "<unset>" );
         ++fail;
       }
       if ( qn.name != test.expect.name )
       {
-        std::cerr
-          << "Expected "
-          << test.lexeme
-          << " to have name "
-          << test.expect.name
-          << " but found "
-          << qn.name;
+        std::cerr << "Expected " << test.lexeme << " to have name "
+                  << test.expect.name << " but found " << qn.name;
         ++fail;
       }
       if ( qn.Path() != test.path )
       {
-        std::cerr
-          << "Expected "
-          << test.lexeme
-          << " to have path "
-          << test.path
-          << " but found "
-          << qn.Path()
-          << "\n";
+        std::cerr << "Expected " << test.lexeme << " to have path " << test.path
+                  << " but found " << qn.Path() << "\n";
         ++fail;
       }
       if ( qn.IsAbs() != test.isAbs )
       {
-        std::cerr
-          << "Expected "
-          << test.lexeme
-          << " to "
-          << ( test.isAbs ? "be" : "not be" )
-          << " absolute\n";
+        std::cerr << "Expected " << test.lexeme << " to "
+                  << ( test.isAbs ? "be" : "not be" ) << " absolute\n";
         ++fail;
       }
     }
@@ -780,4 +736,4 @@ namespace Index::Test
   {
     TestQualifiedName();
   }
-} // namespae Index::Test
+}  // namespace Index::Test
