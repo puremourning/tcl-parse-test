@@ -125,6 +125,8 @@ distclean: clean
 
 test: $(BIN_DIR)/analyzer
 	$(BIN_DIR)/analyzer --test
+	$(BIN_DIR)/analyzer --file test/test.tcl
+	$(BIN_DIR)/analyzer --file test/simple.tcl
 
 show_%:
 	@echo ${$(@:show_%=%)}
