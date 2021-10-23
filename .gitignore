@@ -8,3 +8,5 @@ release-*/
 debug-*/
 build/
 build-*/
+.vimspector.session
+Session.vim
