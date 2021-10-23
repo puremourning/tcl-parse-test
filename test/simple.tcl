@@ -26,3 +26,15 @@ namespace eval Space {
 
 }
 
+
+namespace eval Space2 {
+  proc Race {} {
+    ::Test
+  }
+
+  namespace eval Rice {
+    proc Roast {} {
+      Race
+    }
+  }
+}
