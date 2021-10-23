@@ -63,7 +63,7 @@ namespace DB
       const auto id = table.size() + 1;
       auto& row = table.emplace_back( std::forward< Args >( args )... );
       row->id = id;
-      static_cast<TRecord*>(this)->UpdateKeys( *row );
+      static_cast< TRecord* >( this )->UpdateKeys( *row );
       return *row;
     }
 
@@ -111,7 +111,7 @@ namespace DB
     {
       auto pos = references.size();
       auto& ref = references.emplace_back(
-        new Reference( std::forward<Reference>( r ) ) );
+        new Reference( std::forward< Reference >( r ) ) );
       refsByID.emplace( r.id, pos );
       return *ref;
     }
