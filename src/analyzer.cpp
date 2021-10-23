@@ -164,41 +164,31 @@ int main( int argc, char** argv )
   //       or maybe it really is better to just scan twice: once to discover and
   //       once to find references
   Index::Index index = Index::make_index();
-  Index::ScanContext scanContext{
-    .nsPath = { index.global_namespace_id }
-  };
+  Index::ScanContext scanContext{ .nsPath = { index.global_namespace_id } };
   Index::Build( index, scanContext, script );
 
-  for( auto& kv : index.namespaces.byName )
+  for ( auto& kv : index.namespaces.byName )
   {
-    std::cout
-      << "Namespace: "
-      << Index::GetPrintName( index,
-                              index.namespaces.Get( kv.second ) ) << '\n';
+    std::cout << "Namespace: "
+              << Index::GetPrintName( index, index.namespaces.Get( kv.second ) )
+              << '\n';
   }
 
-  for( auto& kv : index.procs.byName )
+  for ( auto& kv : index.procs.byName )
   {
-    std::cout
-      << "Proc: "
-      << Index::GetPrintName( index,
-                              index.procs.Get( kv.second ) ) << '\n';
+    std::cout << "Proc: "
+              << Index::GetPrintName( index, index.procs.Get( kv.second ) )
+              << '\n';
 
     auto range = index.procs.refsByID.equal_range( kv.second );
-    for( auto it = range.first; it != range.second; ++it )
+    for ( auto it = range.first; it != range.second; ++it )
     {
       auto& r = index.procs.references[ it->second ];
-      std::cout
-        << "  Ref: "
-        << Index::GetPrintName( index,
-                                index.procs.Get( r->id ) )
-        << " at "
-        << r->location.sourceFile->fileName
-        << ":"
-        << r->location.line + 1
-        << '\n';
+      std::cout << "  Ref: "
+                << Index::GetPrintName( index, index.procs.Get( r->id ) )
+                << " at " << r->location.sourceFile->fileName << ":"
+                << r->location.line + 1 << '\n';
     }
-
   }
 
 
