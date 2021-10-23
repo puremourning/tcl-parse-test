@@ -354,49 +354,46 @@ namespace Index
   void AddProcToIndex( Index& index, Namespace& ns, const WordVec& words )
   {
     using Word = Parser::Word;
-    if ( words.size() == 4 && words[ 1 ].type == Word::Type::TEXT )
+    // proc name { arg|{ arg default } ... } { body }
+    std::vector< VariableID > args;
+    if ( words[ 2 ].type == Word::Type::LIST )
     {
-      // proc name { arg|{ arg default } ... } { body }
-      std::vector< VariableID > args;
-      if ( words[ 2 ].type == Word::Type::LIST )
+      auto& vec = std::get< Word::WordVec >( words[ 2 ].data );
+      args.reserve( vec.size() );
+      for ( auto& arg : vec )
       {
-        auto& vec = std::get< Word::WordVec >( words[ 2 ].data );
-        args.reserve( vec.size() );
-        for ( auto& arg : vec )
+        std::string argName;
+        if ( arg.type == Word::Type::TEXT )
         {
-          std::string argName;
-          if ( arg.type == Word::Type::TEXT )
-          {
-            argName = arg.text;
-          }
-          else
-          {
-            argName = std::get< Word::WordVec >( arg.data )[ 0 ].text;
-          }
-
-          auto& v = index.variables.Insert( new Variable{
-            .name = std::move( argName ),
-          } );
-          args.push_back( v.id );
+          argName = arg.text;
         }
-      }
-      auto qn = SplitName( words[ 1 ].text );
-      auto& proc = index.procs.Insert( new Proc{
-        .name = qn.name,
-        .arguments{ std::move( args ) },
-      } );
+        else
+        {
+          argName = std::get< Word::WordVec >( arg.data )[ 0 ].text;
+        }
 
-      if ( qn.IsAbs() || qn.ns )
-      {
-        auto& resolved = ResolveNamespace( index, qn, ns );
-        resolved.scope.procs.push_back( proc.id );
-        proc.parent_namespace = resolved.id;
+        auto& v = index.variables.Insert( new Variable{
+          .name = std::move( argName ),
+        } );
+        args.push_back( v.id );
       }
-      else
-      {
-        ns.scope.procs.push_back( proc.id );
-        proc.parent_namespace = ns.id;
-      }
+    }
+    auto qn = SplitName( words[ 1 ].text );
+    auto& proc = index.procs.Insert( new Proc{
+      .name = qn.name,
+      .arguments{ std::move( args ) },
+    } );
+
+    if ( qn.IsAbs() || qn.ns )
+    {
+      auto& resolved = ResolveNamespace( index, qn, ns );
+      resolved.scope.procs.push_back( proc.id );
+      proc.parent_namespace = resolved.id;
+    }
+    else
+    {
+      ns.scope.procs.push_back( proc.id );
+      proc.parent_namespace = ns.id;
     }
   }
 
@@ -404,7 +401,8 @@ namespace Index
                    ScanContext& context,
                    const Parser::Script& script )
   {
-    using Word = Parser::Word;
+    using Call = Parser::Call;
+
     // Find namespace, proc and variable declarations
     for ( auto& call : script.commands )
     {
@@ -412,31 +410,26 @@ namespace Index
 
       auto scanned = false;
 
-      if ( call.words[ 0 ].type == Word::Type::TEXT )
+      switch ( call.type )
       {
-        auto& cmdName = call.words[ 0 ].text;
-
-        if ( cmdName == "proc" )
+        case Call::Type::NAMESPACE_EVAL:
+        {
+          QualifiedName qn = {
+            .ns = std::string( call.words[ 2 ].text ),
+            .name = "",
+          };
+          context.nsPath.push_back( ResolveNamespace( index, qn, ns ).id );
+          ScanWord( index, context, call.words[ 3 ] );
+          context.nsPath.pop_back();
+          scanned = true;
+          break;
+        }
+        case Call::Type::PROC:
         {
           AddProcToIndex( index, ns, call.words );
+          break;
         }
-        else if ( cmdName == "namespace" )
-        {
-          if ( call.words.size() == 4 &&
-               call.words[ 1 ].type == Word::Type::TEXT &&
-               call.words[ 1 ].text == "eval" &&
-               call.words[ 2 ].type == Word::Type::TEXT )
-          {
-            QualifiedName qn = {
-              .ns = std::string( call.words[ 2 ].text ),
-              .name = "",
-            };
-            context.nsPath.push_back( ResolveNamespace( index, qn, ns ).id );
-            ScanWord( index, context, call.words[ 3 ] );
-            context.nsPath.pop_back();
-            scanned = true;
-          }
-        }
+#if 0
         else if ( cmdName == "set" )
         {
           if ( call.words.size() == 3 )
@@ -493,6 +486,10 @@ namespace Index
         else if ( cmdName == "uplevel" )
         {
         }
+#endif
+        default:
+          // ignore
+          break;
       }
 
       if ( !scanned )
@@ -609,37 +606,28 @@ namespace Index
                     ScanContext& context,
                     const Parser::Script& script )
   {
-    using Word = Parser::Word;
+    using Call = Parser::Call;
 
     for ( auto& call : script.commands )
     {
       auto& ns = index.namespaces.Get( context.nsPath.back() );
 
       auto scanned = false;
-      if ( call.words[ 0 ].type == Word::Type::TEXT )
+      switch ( call.type )
       {
-        auto& cmdName = call.words[ 0 ].text;
-
-        if ( cmdName == "namespace" )
+        case Call::Type::NAMESPACE_EVAL:
         {
-          if ( call.words.size() == 4 &&
-               call.words[ 1 ].type == Word::Type::TEXT &&
-               call.words[ 1 ].text == "eval" &&
-               call.words[ 2 ].type == Word::Type::TEXT )
-          {
-            QualifiedName qn = {
-              .ns = std::string( call.words[ 2 ].text ),
-              .name = "",
-            };
-            context.nsPath.push_back( ResolveNamespace( index, qn, ns ).id );
-            IndexWord( index, context, call.words[ 3 ] );
-            context.nsPath.pop_back();
-            scanned = true;
-          }
+          QualifiedName qn = {
+            .ns = std::string( call.words[ 2 ].text ),
+            .name = "",
+          };
+          context.nsPath.push_back( ResolveNamespace( index, qn, ns ).id );
+          IndexWord( index, context, call.words[ 3 ] );
+          context.nsPath.pop_back();
+          scanned = true;
+          break;
         }
-        else if ( cmdName == "proc" && call.words.size() > 3 &&
-                  call.words[ 1 ].type == Word::Type::TEXT &&
-                  call.words[ 3 ].type == Word::Type::SCRIPT )
+        case Call::Type::PROC:
         {
           QualifiedName procName = SplitName( call.words[ 1 ].text );
           context.nsPath.push_back(
@@ -647,13 +635,20 @@ namespace Index
           IndexWord( index, context, call.words[ 3 ] );
           context.nsPath.pop_back();
           scanned = true;
+          break;
+        }
+        case Call::Type::USER:
+        {
+          if ( Proc* proc = FindProc( index, ns, call.words[ 0 ].text ) )
+          {
+            // Add a reference to the proc being called if we can
+            AddCommandReference( index, call.words[ 0 ].location, *proc );
+          }
         }
 
-        if ( Proc* proc = FindProc( index, ns, cmdName ) )
-        {
-          // Add a reference to the proc being called if we can
-          AddCommandReference( index, call.words[ 0 ].location, *proc );
-        }
+        default:
+          // ignore
+          break;
       }
 
       // Add references to any variables that are in the command

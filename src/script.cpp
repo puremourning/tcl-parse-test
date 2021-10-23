@@ -60,6 +60,17 @@ namespace Parser
 
   struct Call
   {
+    enum class Type
+    {
+      PROC,
+      WHILE,
+      FOR,
+      FOREACH,
+      NAMESPACE_EVAL,
+
+      IF,
+      USER,
+    } type;
     std::vector< Word > words;
   };
 
@@ -264,7 +275,7 @@ namespace Parser
       return;
     }
 
-    auto& call = s.commands.emplace_back();
+    auto& call = s.commands.emplace_back( Call{ .type = Call::Type::USER } );
     call.words.reserve( parseResult.numWords );
 
     // TODO: Do this like the TclPro instrumenter:
@@ -367,17 +378,20 @@ namespace Parser
     {
       if ( cmdWord.text == "proc" && parseResult.numWords == 4 )
       {
+        call.type = Call::Type::PROC;
         parseWord();  // name
         parseArgs();  // arguments TODO: parseScopeArgs() ?
         parseBody();  // body
       }
       else if ( cmdWord.text == "while" && parseResult.numWords == 3 )
       {
+        call.type = Call::Type::WHILE;
         parseWord();  // while-expression TODO parseExpr() ?
         parseBody();
       }
       else if ( cmdWord.text == "for" && parseResult.numWords == 5 )
       {
+        call.type = Call::Type::FOR;
         parseBody();  // { set x 0 }
         parseWord();  // { $x < 100 } TODO parseExpr()
         parseBody();  // { incr x }
@@ -385,6 +399,7 @@ namespace Parser
       }
       else if ( cmdWord.text == "foreach" && parseResult.numWords == 4 )
       {
+        call.type = Call::Type::FOREACH;
         parseWord();  // { x y } // TODO: parseScopeArgs()
         parseWord();  // $list
         parseBody();  // loop body
@@ -395,6 +410,7 @@ namespace Parser
         if ( subCmd.type == Word::Type::TEXT && subCmd.text == "eval" &&
              parseResult.numWords == 4 )
         {
+          call.type = Call::Type::NAMESPACE_EVAL;
           parseWord();
           parseBody();
         }
