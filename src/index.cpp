@@ -3,7 +3,6 @@
 #include "db.cpp"
 #include "tclDecls.h"
 #include "tclInt.h"
-#include <_types/_uint64_t.h>
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
@@ -99,8 +98,13 @@ namespace Index
       return name;
     }
 
-    std::vector< std::string_view > Split() const
+    std::vector< std::string_view > NamespacePath() const
     {
+      if ( !ns )
+      {
+        return {};
+      }
+
       bool abs = IsAbs();
       if ( abs && !ns->empty() )
       {
@@ -311,7 +315,7 @@ namespace Index
                                Namespace& ns )
   {
     auto cur_id = ns.id;
-    std::vector< std::string_view > parts = qn.Split();
+    std::vector< std::string_view > parts = qn.NamespacePath();
     if ( qn.IsAbs() )
     {
       cur_id = index.global_namespace_id;
@@ -331,7 +335,7 @@ namespace Index
       if ( child_pos == children.end() )
       {
         auto& child = index.namespaces.Insert( new Namespace{
-          .name{ part },
+          .name = std::string{ part },
           .parent_namespace = current.id,
         } );
         children.push_back( child.id );

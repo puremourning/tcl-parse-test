@@ -18,7 +18,7 @@ namespace DB
   //
   // FIXME: lazy non-serialisable vector of pointers
   template< typename T >
-  using Table = std::vector< std::unique_ptr< T > >;
+  using Storage = std::vector< std::unique_ptr< T > >;
 
   // TODO: we want:
   //  - to be able to specify arbitrary keys for a type (specialise?)
@@ -52,7 +52,7 @@ namespace DB
   template< typename TRecord, typename TRow >
   struct Record
   {
-    using Table = Table< TRow >;
+    using Table = Storage< TRow >;
     using Row = TRow;
 
     Table table;
@@ -105,7 +105,7 @@ namespace DB
     using Reference = typename TRow::Reference;
     using ID = typename TRow::ID;
 
-    Table< Reference > references;
+    Storage< Reference > references;
 
     Reference& AddReference( Reference&& r )
     {

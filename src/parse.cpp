@@ -179,7 +179,7 @@ namespace
     else if ( token.type == TCL_TOKEN_WORD )
     {
       // Maybe somethng like
-      //   X Y \
+      //   X Y <backslash>
       //     Z
       //
       // TODO: We just faff with the ranges of the included tokens. This is
@@ -625,7 +625,7 @@ int main( int argc, char** argv )
     {
       shift();
       arg = argv[ 0 ];
-      std::ifstream f( arg );
+      std::ifstream f( std::string{ arg } );
       if ( !f )
       {
         std::cerr << "Unable to read file: " << arg << '\n';

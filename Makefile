@@ -6,13 +6,14 @@ ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
 
 # debug/release
 TARGET ?= debug
+PLATFORM = $(shell uname)
 ARCH ?= x86_64
 
-BUILD_DEST = $(TARGET)-$(ARCH)
+BUILD_DEST = $(TARGET)-$(PLATFORM)-$(ARCH)
 BIN_DIR = $(BUILD_DEST)/bin
 
 BASICFLAGS=-I$(BUILD_DEST)/include -I$(TCL)/generic -I$(TCL)/unix \
-		   -std=c++17 -arch $(ARCH)
+		   -std=c++17
 
 # put analyzer.cpp first, as this is the jubo TU
 ANALYZER_SOURCES=src/analyzer.cpp \
@@ -38,7 +39,7 @@ ifeq ($(ASAN),1)
 	CPPFLAGS+=$(ASANFLAGS)
 endif
 
-LDFLAGS=-L$(BUILD_DEST)/lib -ltcl$(TCL_VERSION) -lz  -lpthread -framework CoreFoundation
+LDFLAGS=-L$(BUILD_DEST)/lib -ltcl$(TCL_VERSION) -lz  -lpthread
 
 .PHONY: all clean test help
 
@@ -55,28 +56,50 @@ help:
 	@echo "Default ARCH is x86_64"
 	@echo "Default recipe is all"
 	@echo ""
-	@echo "Builds into ./TARGET-ARCH, e.g. debug-arm64 or release-x86_64, etc."
+	@echo "Builds into ./TARGET-PLATFORM-ARCH, e.g. debug-Darwin-arm64 or release-Darwin-x86_64, etc."
 	@echo ""
 
 TCL_SOURCES=$(shell ls -1 $(TCL)/unix/*.c)
 TCL_LIB=$(BUILD_DEST)/lib/libtcl$(TCL_VERSION).a
 
+ifeq (Darwin,${PLATFORM})
+
+LDFLAGS+=-framework CoreFoundation
+ARCHFLAGS=-arch $(ARCH)
+CPPFLAGS+=$(ARCHFLAGS)
+
 $(TCL_LIB): $(BUILD_DEST) $(TCL_SOURCES)
 	@cd $(TCL)/unix && \
-		env CFLAGS="-arch $(ARCH)" \
+		env CFLAGS="$(ARCHFLAGS)" \
 		./configure --prefix $(CURDIR)/$(BUILD_DEST) \
-				    --disable-shared \
+					--disable-shared \
 					--host $(ARCH)-apple-darwin \
 					--disable-framework && \
 		$(MAKE) clean && \
 		$(MAKE) && \
 		$(MAKE) install-binaries
 
+else
+
+CPPFLAGS += -Wno-missing-field-initializers -fuse-ld=gold
+LDFLAGS+=-ldl
+
+$(TCL_LIB): $(BUILD_DEST) $(TCL_SOURCES)
+	@cd $(TCL)/unix && \
+		./configure --prefix $(CURDIR)/$(BUILD_DEST) \
+					--disable-shared \
+					--disable-framework && \
+		$(MAKE) clean && \
+		$(MAKE) && \
+		$(MAKE) install-binaries
+
+endif
+
 $(BIN_DIR)/parse: src/parse.cpp $(BUILD_INF) $(TCL_LIB)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 $(BIN_DIR)/analyzer: $(ANALYZER_SOURCES) $(BUILD_INF) $(TCL_LIB)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 $(BUILD_DEST):
 	@if [ "$(ARCH)" != "arm64" ] && [ "$(ARCH)" != "x86_64" ]; then\
@@ -86,7 +109,7 @@ $(BUILD_DEST):
 		echo "Invalid target $(TARGET)"; \
 		false; \
 	else \
-		mkdir -p $(TARGET)-$(ARCH); \
+		mkdir -p $(BUILD_DEST); \
 		mkdir -p $(BIN_DIR); \
 	fi
 

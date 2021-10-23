@@ -5,10 +5,13 @@
       "default": true,
       "variables": [
         {
-          "arch": "x86_64"
+          "arch": "x86_64",
+          "platform": {
+            "shell": "uname"
+          }
         },
         {
-          "prog": "${workspaceRoot}/debug-${arch}/bin/analyzer"
+          "prog": "${workspaceRoot}/debug-${platform}-${arch}/bin/analyzer"
         },
         {
           "make": {
@@ -41,7 +44,7 @@
       "adapter": "vscode-cpptools",
       "configuration": {
         "request": "launch",
-        "program": "${workspaceRoot}/build-container/src/analyzer",
+        "program": "${workspaceRoot}/debug-Linux-x86_64/bin/analyzer",
         "MImode": "gdb",
         "miDebuggerServerAddress": "127.0.0.1:5678",
         "sourceFileMap": {
