@@ -7,7 +7,7 @@ ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
 # debug/release
 TARGET ?= debug
 PLATFORM = $(shell uname)
-ARCH ?= x86_64
+ARCH ?= $(shell uname -m)
 
 BUILD_DEST = $(TARGET)-$(PLATFORM)-$(ARCH)
 BIN_DIR = $(BUILD_DEST)/bin

@@ -5,7 +5,9 @@
       "default": true,
       "variables": [
         {
-          "arch": "x86_64",
+          "arch": {
+            "shell": "uname -m"
+          },
           "platform": {
             "shell": "uname"
           }
