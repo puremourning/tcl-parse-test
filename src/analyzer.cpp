@@ -183,19 +183,22 @@ int main( int argc, char** argv )
       << "Proc: "
       << Index::GetPrintName( index,
                               index.procs.Get( kv.second ) ) << '\n';
-  }
 
-  for( auto & r : index.prefs )
-  {
-    std::cout
-      << "Proc Ref: "
-      << Index::GetPrintName( index,
-                              index.procs.Get( r->proc ) )
-      << " at "
-      << r->location.sourceFile->fileName
-      << ":"
-      << r->location.line + 1
-      << '\n';
+    auto range = index.procs.refsByID.equal_range( kv.second );
+    for( auto it = range.first; it != range.second; ++it )
+    {
+      auto& r = index.procs.references[ it->second ];
+      std::cout
+        << "  Ref: "
+        << Index::GetPrintName( index,
+                                index.procs.Get( r->id ) )
+        << " at "
+        << r->location.sourceFile->fileName
+        << ":"
+        << r->location.line + 1
+        << '\n';
+    }
+
   }
 
 

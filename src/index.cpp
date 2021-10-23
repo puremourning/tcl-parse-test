@@ -162,7 +162,7 @@ namespace Index
     struct Reference
     {
       Parser::SourceLocation location;
-      VariableID variable;
+      VariableID id;
     };
   };
 
@@ -186,7 +186,7 @@ namespace Index
     struct Reference
     {
       Parser::SourceLocation location;
-      ProcID proc;
+      ProcID id;
     };
   };
 
@@ -203,19 +203,15 @@ namespace Index
     struct Reference
     {
       Parser::SourceLocation location;
-      NamespaceID ns;
+      NamespaceID id;
     };
   };
 
   struct Index
   {
-    DB::Record< Namespace > namespaces;
-    DB::Record< Proc > procs;
-    DB::Record< Variable > variables;
-
-    DB::Table< Namespace::Reference > nsrefs;
-    DB::Table< Variable::Reference > vrefs;
-    DB::Table< Proc::Reference > prefs;
+    DB::RefRecord< Namespace > namespaces;
+    DB::RefRecord< Proc > procs;
+    DB::RefRecord< Variable > variables;
 
     NamespaceID global_namespace_id;
   };
@@ -564,7 +560,8 @@ namespace Index
                             const Parser::SourceLocation& location,
                             const Proc& proc )
   {
-    index.prefs.emplace_back( new Proc::Reference{ location, proc.id } );
+    index.procs.AddReference(
+      Proc::Reference{ .location = location, .id = proc.id } );
   }
 
   Proc* FindProc( Index& index, Namespace& ns, const std::string_view& cmdName )
@@ -579,7 +576,7 @@ namespace Index
       target_namespace = ResolveNamespace( index, qn, ns ).id;
     }
 
-    for ( auto& it = range.first; it != range.second; ++it )
+    for ( auto it = range.first; it != range.second; ++it )
     {
       auto& p = index.procs.Get( it->second );
       if ( p.parent_namespace == target_namespace )
