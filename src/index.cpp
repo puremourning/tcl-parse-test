@@ -656,16 +656,26 @@ namespace Index
             scanned = true;
           }
         }
-        else if ( Proc* proc = FindProc( index, ns, cmdName ) )
+        else if ( cmdName == "proc" &&
+                  call.words.size() > 3 &&
+                  call.words[ 1 ].type == Word::Type::TEXT &&
+                  call.words[ 3 ].type == Word::Type::SCRIPT)
+        {
+          QualifiedName procName = SplitName( call.words[ 1 ].text );
+          context.nsPath.push_back( ResolveNamespace( index,
+                                                      procName,
+                                                      ns ).id );
+          IndexWord( index, context, call.words[ 3 ] );
+          context.nsPath.pop_back();
+          scanned = true;
+        }
+
+        if ( Proc* proc = FindProc( index, ns, cmdName ) )
         {
           // Add a reference to the proc being called if we can
           AddCommandReference( index,
                                call.words[ 0 ].location,
                                *proc );
-        }
-        else
-        {
-          std::cerr << "Not a proc: " << cmdName << '\n';
         }
       }
 
