@@ -48,7 +48,7 @@ namespace DB
     Row& Insert( Args&&... args )
     {
       const auto id = table.size() + 1;
-      auto& row = table.emplace_back( std::forward< Args... >( args )... );
+      auto& row = table.emplace_back( std::forward< Args >( args )... );
       row->id = id;
       byName.emplace( row->name, id );
       return *row;
