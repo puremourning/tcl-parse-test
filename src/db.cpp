@@ -17,11 +17,19 @@ namespace DB
 
   // FIXME: Lazy standard library containers
   template< typename TKey, typename TValue >
-  using HashKey = std::unordered_map< TKey, TValue >;
+  using HashUniqueKey = std::unordered_map< TKey, TValue >;
 
   // FIXME: Lazy standard library containers
   template< typename TKey, typename TValue >
-  using SortKey = std::map< TKey, TValue >;
+  using SortUniqueKey = std::map< TKey, TValue >;
+
+  // FIXME: Lazy standard library containers
+  template< typename TKey, typename TValue >
+  using HashIndex = std::unordered_multimap< TKey, TValue >;
+
+  // FIXME: Lazy standard library containers
+  template< typename TKey, typename TValue >
+  using SortIndex = std::multimap< TKey, TValue >;
 
   // FIXME: Lazy standard library containers
   template< typename T>
@@ -34,37 +42,34 @@ namespace DB
     using Row = TRow;
 
     Table table;
-    SortKey< decltype( TRow::name ), size_t > byName;
+    SortIndex< decltype( TRow::name ), size_t > byName;
 
     template< typename... Args >
     Row& Insert( Args&&... args )
     {
-      const auto id = table.size();
+      const auto id = table.size() + 1;
       auto& row = table.emplace_back( std::forward<Args...>( args )... );
       row->id = id;
       byName.emplace( row->name, id );
       return *row;
     }
 
-    Row& Get( typename TRow::ID id )
+    Row& Get( typename TRow::ID id ) const
     {
-      if constexpr ( std::is_signed< typename TRow::ID >::value )
+      if ( id < 1 )
       {
-        if ( id < 0 )
-        {
-          assert( false && "Invalid id must be 0 or greater" );
-          abort();
-        }
+        assert( false && "Invalid id must be 1 or greater" );
+        abort();
       }
 
-      if ( id >= table.size() )
+      if ( id > table.size() )
       {
         assert( false && "Invalid id" );
         abort();
       }
 
       // FIXME: If anything is ever removed from the table, boom
-      return *table.at( id ).get();
+      return *table.at( id - 1 ).get();
     }
     // FreeList<size_t> free_;
   };

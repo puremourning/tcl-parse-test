@@ -68,6 +68,7 @@ int main( int argc, char** argv )
     {
       shift();
       Parser::Test::Run();
+      Index::Test::Run();
       return 0;
     }
     else if ( arg == "--file" )
@@ -182,6 +183,19 @@ int main( int argc, char** argv )
       << "Proc: "
       << Index::GetPrintName( index,
                               index.procs.Get( kv.second ) ) << '\n';
+  }
+
+  for( auto & r : index.prefs )
+  {
+    std::cout
+      << "Proc Ref: "
+      << Index::GetPrintName( index,
+                              index.procs.Get( r->proc ) )
+      << " at "
+      << r->location.sourceFile->fileName
+      << ":"
+      << r->location.line + 1
+      << '\n';
   }
 
 

@@ -83,9 +83,9 @@ namespace Parser
   struct SourceLocation
   {
     const SourceFile* sourceFile;
-    size_t offset;
-    size_t line;
-    size_t byte;
+    size_t offset;                /// 0-based offset into source file
+    size_t line;                  /// 0-based line
+    size_t byte;                  /// 0-based offset into line
   };
 
   SourceLocation make_source_location( const SourceFile& sourceFile,

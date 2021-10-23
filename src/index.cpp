@@ -23,6 +23,27 @@ namespace Index
 {
   struct Namespace;
 
+  std::vector<std::string_view> SplitPath( std::string_view path )
+  {
+    std::vector<std::string_view> vec;
+    std::string_view::size_type start = 0;
+    for( std::string_view::size_type cur = 0;
+         cur < path.length();
+         ++cur )
+    {
+      if ( path[ cur ] == ':' && cur+1 < path.length() && path[ cur+1 ] == ':' )
+      {
+        vec.push_back( path.substr( start, cur - start ) );
+        cur ++;
+        start = cur + 1;
+      }
+    }
+
+    vec.push_back( path.substr( start ) );
+
+    return vec;
+  }
+
   struct QualifiedName
   {
     std::optional< std::string > ns;
@@ -30,16 +51,31 @@ namespace Index
 
     bool IsAbs() const
     {
-      if ( !ns || ns.value().length() < 2 )
+      if ( !ns )
       {
+        // no namespace
+        return false;
+      }
+
+      if ( ns.value().empty() )
+      {
+        // global namespace, like ::A
+        return true;
+      }
+
+      if ( ns.value().length() < 2 )
+      {
+        // likely invalid, like :::B
         return false;
       }
 
       if( ns.value().substr(0, 2) == "::" )
       {
+        // Has a leading ::, like ::A::B
         return true;
       }
 
+      // No leading ::
       return false;
     }
 
@@ -64,6 +100,21 @@ namespace Index
         return ns.value() + "::" + name;
       }
       return name;
+    }
+
+    std::vector<std::string_view> Split() const
+    {
+      bool abs = IsAbs();
+      if ( abs && !ns->empty() )
+      {
+        return SplitPath( std::string_view( *ns ).substr( 2 ) );
+      }
+      else if ( abs )
+      {
+        return {};
+      }
+
+      return SplitPath( std::string_view( *ns ) );
     }
   };
 
@@ -91,27 +142,6 @@ namespace Index
     }
 
     return qn;
-  }
-
-  std::vector<std::string_view> SplitPath( std::string_view path )
-  {
-    std::vector<std::string_view> vec;
-    std::string_view::size_type start = 0;
-    for( std::string_view::size_type cur = 0;
-         cur < path.length();
-         ++cur )
-    {
-      if ( path[ cur ] == ':' && cur+1 < path.length() && path[ cur+1 ] == ':' )
-      {
-        vec.push_back( path.substr( start, cur - start ) );
-        cur ++;
-        start = cur + 1;
-      }
-    }
-
-    vec.push_back( path.substr( start ) );
-
-    return vec;
   }
 
   struct Proc;
@@ -186,9 +216,9 @@ namespace Index
     DB::Record< Proc > procs;
     DB::Record< Variable > variables;
 
-    // Table< Namespace::Reference > nsrefs;
-    // Table< Variable::Reference > vrefs;
-    // Table< Proc::Reference > prefs;
+    DB::Table< Namespace::Reference > nsrefs;
+    DB::Table< Variable::Reference > vrefs;
+    DB::Table< Proc::Reference > prefs;
 
     NamespaceID global_namespace_id;
   };
@@ -202,7 +232,7 @@ namespace Index
     index.variables.table.reserve( 1024 * 1024 );
 
     auto& global_namespace = index.namespaces.Insert( new Namespace{
-      .name = "<global>",
+      .name = "",
     } );
 
     index.global_namespace_id = global_namespace.id;
@@ -293,15 +323,10 @@ namespace Index
                                Namespace& ns )
   {
     auto cur_id = ns.id;
-    std::vector<std::string_view> parts;
+    std::vector<std::string_view> parts = qn.Split();
     if ( qn.IsAbs() )
     {
       cur_id = index.global_namespace_id;
-      parts = SplitPath( std::string_view( *qn.ns  ).substr( 2 ) );
-    }
-    else
-    {
-      parts = SplitPath( *qn.ns );
     }
 
     for ( auto part : parts )
@@ -555,6 +580,49 @@ namespace Index
     }
   }
 
+  void AddCommandReference( Index& index,
+                            const Parser::SourceLocation& location,
+                            const Proc& proc )
+  {
+    index.prefs.emplace_back( new Proc::Reference{ location, proc.id } );
+  }
+
+  Proc *FindProc( Index& index,
+                  Namespace& ns,
+                  const std::string_view& cmdName )
+  {
+    auto qn = SplitName( cmdName );
+    Namespace::ID target_namespace = ns.id;
+
+    auto range = index.procs.byName.equal_range( qn.name );
+
+    if ( qn.IsAbs() || qn.ns )
+    {
+      target_namespace = ResolveNamespace( index, qn, ns ).id;
+    }
+
+    for ( auto& it = range.first; it != range.second; ++it )
+    {
+      auto& p = index.procs.Get( it->second );
+      if ( p.parent_namespace == target_namespace )
+      {
+        return &p;
+      }
+    }
+
+    if ( !qn.IsAbs() && ns.parent_namespace )
+    {
+      // Find in the parent namespace
+      // FIXME: This recursion is extremely SUB-optimal. A loop would be much
+      // faster
+      return FindProc( index,
+                       index.namespaces.Get( *ns.parent_namespace ),
+                       cmdName );
+    }
+
+    return nullptr;
+  }
+
 
   void IndexScript( Index& index,
                     ScanContext& context,
@@ -564,24 +632,50 @@ namespace Index
 
     for ( auto& call : script.commands )
     {
+      auto& ns = index.namespaces.Get( context.nsPath.back() );
 
-      // Add a reference to the proc being called if we can
+      auto scanned = false;
       if ( call.words[ 0 ].type == Word::Type::TEXT )
       {
-        // auto& cmdName = call.words[ 0 ].text;
+        auto& cmdName = call.words[ 0 ].text;
 
-        // if ( Proc* proc = Find( index.procs, context, cmdName ) )
-        // {
-        //   AddCommandReference( index,
-        //                        *proc,
-        //                        call.words[ 0 ].location );
-        // }
+        if ( cmdName == "namespace" )
+        {
+          if ( call.words.size() == 4 &&
+               call.words[ 1 ].type == Word::Type::TEXT &&
+               call.words[ 1 ].text == "eval" &&
+               call.words[ 2 ].type == Word::Type::TEXT )
+          {
+            QualifiedName qn = {
+              .ns = std::string( call.words[ 2 ].text ),
+              .name = "",
+            };
+            context.nsPath.push_back( ResolveNamespace( index, qn, ns ).id );
+            IndexWord( index, context, call.words[ 3 ] );
+            context.nsPath.pop_back();
+            scanned = true;
+          }
+        }
+        else if ( Proc* proc = FindProc( index, ns, cmdName ) )
+        {
+          // Add a reference to the proc being called if we can
+          AddCommandReference( index,
+                               call.words[ 0 ].location,
+                               *proc );
+        }
+        else
+        {
+          std::cerr << "Not a proc: " << cmdName << '\n';
+        }
       }
 
       // Add references to any variables that are in the command
-      for( const auto& word : call.words )
+      if (!scanned)
       {
-        IndexWord( index, context, word );
+        for( const auto& word : call.words )
+        {
+          IndexWord( index, context, word );
+        }
       }
     }
   }
@@ -595,3 +689,85 @@ namespace Index
   }
 
 }  // namespace Index
+
+namespace Index::Test
+{
+  void TestQualifiedName()
+  {
+    struct Test
+    {
+      std::string lexeme;
+      QualifiedName expect;
+      bool isAbs;
+      std::string path;
+    };
+
+    auto fail = 0;
+
+    std::vector< Test > tests = {
+      { "Test", { {}, "Test" }, false, "Test" },
+      { "::Test", { {""}, "Test" }, true, "::Test" },
+      { "Test::Sub", { {"Test"}, "Sub" }, false, "Test::Sub" },
+      { "::Test::Sub", { {"::Test"}, "Sub" }, true, "::Test::Sub" },
+    };
+
+    for( auto&& test : tests )
+    {
+      QualifiedName qn = SplitName( test.lexeme );
+      if ( qn.ns != test.expect.ns )
+      {
+        std::cerr
+          << "Expected "
+          << test.lexeme
+          << " to have ns "
+          << ( test.expect.ns ? *test.expect.ns : "<unset>" )
+          << " but found "
+          << ( qn.ns ? *qn.ns : "<unset>" );
+        ++fail;
+      }
+      if ( qn.name != test.expect.name )
+      {
+        std::cerr
+          << "Expected "
+          << test.lexeme
+          << " to have name "
+          << test.expect.name
+          << " but found "
+          << qn.name;
+        ++fail;
+      }
+      if ( qn.Path() != test.path )
+      {
+        std::cerr
+          << "Expected "
+          << test.lexeme
+          << " to have path "
+          << test.path
+          << " but found "
+          << qn.Path()
+          << "\n";
+        ++fail;
+      }
+      if ( qn.IsAbs() != test.isAbs )
+      {
+        std::cerr
+          << "Expected "
+          << test.lexeme
+          << " to "
+          << ( test.isAbs ? "be" : "not be" )
+          << " absolute\n";
+        ++fail;
+      }
+    }
+
+    if ( fail )
+    {
+      abort();
+    }
+  }
+
+  void Run()
+  {
+    TestQualifiedName();
+  }
+} // namespae Index::Test
