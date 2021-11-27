@@ -9,11 +9,17 @@ TARGET ?= debug
 PLATFORM = $(shell uname)
 ARCH ?= $(shell uname -m)
 
+ASIO ?= vendor/asio
+JSON ?= vendor/nlohmann
+
 BUILD_DEST = $(TARGET)-$(PLATFORM)-$(ARCH)
 BIN_DIR = $(BUILD_DEST)/bin
 
-BASICFLAGS=-I$(BUILD_DEST)/include -I$(TCL)/generic -I$(TCL)/unix \
-		   -std=c++17
+BASICFLAGS=-isystem $(BUILD_DEST)/include \
+		   -isystem $(TCL)/generic -isystem $(TCL)/unix \
+		   -isystem $(ASIO)/include \
+		   -isystem $(JSON) \
+		   -std=c++20
 
 # put analyzer.cpp first, as this is the jubo TU
 ANALYZER_SOURCES=src/analyzer.cpp \
@@ -21,6 +27,8 @@ ANALYZER_SOURCES=src/analyzer.cpp \
 				 src/script.cpp \
 				 src/index.cpp \
 				 src/db.cpp
+
+SERVER_SOURCES=src/server.cpp
 
 BUILD_INF=Makefile
 
@@ -43,7 +51,7 @@ LDFLAGS=-L$(BUILD_DEST)/lib -ltcl$(TCL_VERSION) -lz  -lpthread
 
 .PHONY: all clean test help
 
-all: $(BUILD_DEST) $(BIN_DIR)/parse $(BIN_DIR)/analyzer
+all: $(BUILD_DEST) $(BIN_DIR)/parse $(BIN_DIR)/analyzer $(BIN_DIR)/server
 
 help:
 	@echo "Developer build. See also cmake."
@@ -101,6 +109,9 @@ $(BIN_DIR)/parse: src/parse.cpp $(BUILD_INF) $(TCL_LIB)
 $(BIN_DIR)/analyzer: $(ANALYZER_SOURCES) $(BUILD_INF) $(TCL_LIB)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
+$(BIN_DIR)/server: $(SERVER_SOURCES) $(BUILD_INF) $(TCL_LIB)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+
 $(BUILD_DEST):
 	@if [ "$(ARCH)" != "arm64" ] && [ "$(ARCH)" != "x86_64" ]; then\
 		echo "Invalid arch $(ARCH)"; \
@@ -117,6 +128,7 @@ $(BUILD_DEST):
 clean:
 	@echo Clean $(BUILD_DEST)/
 	rm -f $(BIN_DIR)/analyzer
+	rm -f $(BIN_DIR)/server
 	rm -f $(BIN_DIR)/parse
 
 distclean: clean

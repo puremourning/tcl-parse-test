@@ -10,10 +10,11 @@
           },
           "platform": {
             "shell": "uname"
-          }
+          },
+          "target": "${target:analyzer}"
         },
         {
-          "prog": "${workspaceRoot}/debug-${platform}-${arch}/bin/analyzer"
+          "prog": "${workspaceRoot}/debug-${platform}-${arch}/bin/${target}"
         },
         {
           "make": {
