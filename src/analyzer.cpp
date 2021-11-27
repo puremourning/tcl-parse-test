@@ -186,8 +186,8 @@ int main( int argc, char** argv )
       auto& r = index.procs.references[ it->second ];
       std::cout << "  Ref: "
                 << Index::GetPrintName( index, index.procs.Get( r->id ) )
-                << " at " << r->location.sourceFile->fileName << ":"
-                << r->location.line + 1 << '\n';
+                << " at " << r->location
+                << '\n';
     }
   }
 

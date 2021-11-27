@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -83,16 +84,27 @@ namespace Parser
   struct SourceLocation
   {
     const SourceFile* sourceFile;
-    size_t offset;  /// 0-based offset into source file
+    size_t offset;  /// 0-based byte offset into source file
     size_t line;    /// 0-based line
-    size_t byte;    /// 0-based offset into line
+    size_t column;  /// 0-based byte offset into line
   };
+
+  std::ostream& operator<<( std::ostream& o, const SourceLocation& loc )
+  {
+    o << loc.sourceFile->fileName
+      << ':'
+      << loc.line + 1
+      << ':'
+      << loc.column + 1;
+
+    return o;
+  }
 
   SourceLocation make_source_location( const SourceFile& sourceFile,
                                        size_t offset )
   {
-    auto [ line, byte ] = OffsetToLineByte( sourceFile, offset );
-    return { &sourceFile, offset, line, byte };
+    auto [ line, column ] = OffsetToLineByte( sourceFile, offset );
+    return { &sourceFile, offset, line, column };
   }
 
   SourceLocation make_source_location( const SourceFile& sourceFile,

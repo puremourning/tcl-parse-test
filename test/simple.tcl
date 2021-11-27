@@ -20,7 +20,8 @@ namespace eval Space {
 
   namespace eval Rice {
     proc Roast {} {
-      Race
+      Race [::Toast]
+      Race "[Toast]"
     }
   }
 
