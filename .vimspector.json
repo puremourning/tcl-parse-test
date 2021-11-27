@@ -22,6 +22,8 @@
               "-m", "compiledb",
               "make",
               "TARGET=debug",
+              "ARCH=${arch}",
+              "PLATFORM=${platform}",
               "${prog}"
             ]
           }

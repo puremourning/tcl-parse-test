@@ -1,4 +1,4 @@
-TCL ?= tcl
+TCL ?= vendor/tcl
 TCL_VERSION=9.0
 DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra
 RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
@@ -121,7 +121,7 @@ clean:
 
 distclean: clean
 	@rm -rf $(BUILD_DEST)
-	@cd $(TCL)/unix && $(MAKE) clean
+	@cd $(TCL)/unix && $(MAKE) distclean
 
 test: $(BIN_DIR)/analyzer
 	$(BIN_DIR)/analyzer --test
