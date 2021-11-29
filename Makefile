@@ -1,4 +1,7 @@
 TCL ?= vendor/tcl
+ASIO ?= vendor/asio
+JSON ?= vendor/nlohmann
+
 TCL_VERSION=9.0
 DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra
 RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
@@ -8,9 +11,6 @@ ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
 TARGET ?= debug
 PLATFORM = $(shell uname)
 ARCH ?= $(shell uname -m)
-
-ASIO ?= vendor/asio
-JSON ?= vendor/nlohmann
 
 BUILD_DEST = $(TARGET)-$(PLATFORM)-$(ARCH)
 BIN_DIR = $(BUILD_DEST)/bin
@@ -28,7 +28,11 @@ ANALYZER_SOURCES=src/analyzer.cpp \
 				 src/index.cpp \
 				 src/db.cpp
 
-SERVER_SOURCES=src/server.cpp
+# put server.cpp first, as this is the jubo TU
+SERVER_SOURCES=src/server.cpp \
+			   src/lsp/types.cpp \
+			   src/lsp/comms.cpp \
+			   src/lsp/handlers.cpp
 
 BUILD_INF=Makefile
 

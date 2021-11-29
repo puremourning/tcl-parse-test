@@ -11,10 +11,10 @@
           "platform": {
             "shell": "uname"
           },
-          "target": "${target:analyzer}"
+          "app": "${app:analyzer}"
         },
         {
-          "prog": "${workspaceRoot}/debug-${platform}-${arch}/bin/${target}"
+          "prog": "${workspaceRoot}/debug-${platform}-${arch}/bin/${app}"
         },
         {
           "make": {
@@ -42,6 +42,28 @@
           "type summary add --summary-string \"{ name = ${var.name}, id= ${var.id} }\" Index::Proc",
           "type summary add --summary-string \"{ name = ${var.name}, id= ${var.id} }\" Index::Namespace"
 
+        ]
+      }
+    },
+    "Run with input": {
+      "extends": "Run",
+      "configuration": {
+        "stdio": [
+          "${cin_file:input}",
+          null,
+          "${cerr_file:cerr}"
+        ]
+      }
+    },
+    "Attach local": {
+      "extends": "Run",
+      "configuration": {
+        "request": "launch",
+        "targetCreateCommands": [
+          "target create ${prog}"
+        ],
+        "processCreateCommands": [
+          "gdb-remote ${host:localhost}:${port:54321}"
         ]
       }
     },
