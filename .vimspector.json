@@ -39,8 +39,8 @@
         "expressions": "native",
         "preRunCommands": [
           "type summary add -o \"return bytes( valobj.GetChildMemberWithName( '__data' ).GetPointeeData( 0, int(valobj.GetChildMemberWithName( '__size' ).value) ).uint8s ).decode( 'utf-8' )\" -x std::.*::basic_string_view std::.*::string_view",
-          "type summary add --summary-string \"{ name = ${var.name}, id= ${var.id} }\" Index::Proc",
-          "type summary add --summary-string \"{ name = ${var.name}, id= ${var.id} }\" Index::Namespace"
+          "type summary add --summary-string \"{ name = $${var.name}, id= $${var.id} }\" Index::Proc",
+          "type summary add --summary-string \"{ name = $${var.name}, id= $${var.id} }\" Index::Namespace"
 
         ]
       }
@@ -49,9 +49,9 @@
       "extends": "Run",
       "configuration": {
         "stdio": [
-          "${cin_file:input}",
+          "${cin_file:test/lsp/input}",
           null,
-          "${cerr_file:cerr}"
+          "${cerr_file:test/lsp/cerr}"
         ]
       }
     },
