@@ -144,7 +144,7 @@ test: $(BIN_DIR)/analyzer $(BIN_DIR)/server
 	$(BIN_DIR)/analyzer --test
 	$(BIN_DIR)/analyzer --file test/test.tcl
 	$(BIN_DIR)/analyzer --file test/simple.tcl
-	$(BIN_DIR)/server < test/lsp/input 2> test/lsp/cerr
+	$(BIN_DIR)/server <test/lsp/input >test/lsp/cout
 
 show_%:
 	@echo ${$(@:show_%=%)}

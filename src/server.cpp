@@ -4,7 +4,6 @@
 #include <asio/co_spawn.hpp>
 #include <asio/completion_condition.hpp>
 #include <asio/coroutine.hpp>
-#include <asio/detached.hpp>
 #include <asio/experimental/use_coro.hpp>
 #include <asio/io_context.hpp>
 #include <asio/posix/stream_descriptor.hpp>
@@ -68,71 +67,74 @@ namespace lsp::server
     auto r = lsp::read_message( std::move(in) );
     for( ;; )
     {
-      auto [ ex_p, message_ ] = co_await r.async_resume(
-        use_nothrow_awaitable );
-
-      if ( ex_p )
+      try
       {
-        try
+        auto message_ = co_await r.async_resume(
+          asio::use_awaitable );
+
+        if ( !message_ )
         {
-          std::rethrow_exception( ex_p );
-        }
-        catch ( const std::exception& ex_p )
-        {
-          std::cerr << "Exception reading message... "
-                    << ex_p.what()
-                    << std::endl;
+          std::cerr << "Empty message!" << std::endl;
           break;
         }
+
+        const auto& message = *message_;
+
+        // spawn a new handler for this message
+        if ( !message.contains("method") )
+        {
+          continue;
+        }
+
+        const auto& method = message[ "method" ];
+
+        std::cerr << "RX: " << message.dump( 2 ) << std::endl;
+
+        if ( method == "initialize" )
+        {
+          asio::co_spawn( co_await asio::this_coro::executor,
+                          lsp::handlers::handle_initialize(out, message ),
+                          handle_unexpected_exception<> );
+        }
+        else if ( method == "initialized" )
+        {
+           // Not sure we need to do anything here
+        }
+        else if ( method == "shutdown" )
+        {
+          co_await send_reply( out, message[ "id" ], {} );
+        }
+        else if ( method == "exit" )
+        {
+          break;
+        }
+        else if ( method == "workspace/didChangeConfiguration" )
+        {
+            lsp::handlers::on_workspace_didchangeconfiguration(out, message );
+        }
+        else if ( method == "textDocument/didOpen" )
+        {
+          lsp::handlers::on_textdocument_didopen(out, message );
+        }
+        else if ( method == "textDocument/didChange" )
+        {
+          lsp::handlers::on_textdocument_didchange(out, message );
+        }
+        else if ( method == "textDocument/didClose" )
+        {
+          lsp::handlers::on_textdocument_didclose(out, message );
+        }
+        else
+        {
+          std::cerr << "Unknown message: " << method << std::endl;
+        }
       }
-      else if ( !message_ )
+      catch ( const std::exception& ex )
       {
-        std::cerr << "Empty message!" << std::endl;
+        std::cerr << "exception handling message: "
+                  << ex.what()
+                  << std::endl;
         break;
-      }
-
-      const auto& message = *message_;
-
-      // spawn a new handler for this message
-      if ( !message.contains("method") )
-      {
-        continue;
-      }
-
-      const auto& method = message[ "method" ];
-
-      std::cerr << "RX: " << message.dump( 2 ) << std::endl;
-
-      if ( method == "initialize" )
-      {
-        asio::co_spawn( co_await asio::this_coro::executor,
-                        lsp::handlers::on_initialize(out, message ),
-                        handle_unexpected_exception<> );
-      }
-      else if ( method == "initialized" )
-      {
-         // Not sure we need to do anything here
-      }
-      else if ( method == "shutdown" )
-      {
-        co_await send_reply( out, message[ "id" ], {} );
-      }
-      else if ( method == "exit" )
-      {
-        break;
-      }
-      else if ( method == "textDocument/didOpen" )
-      {
-      }
-      else if ( method == "textDocument/didChange" )
-      {
-      }
-      else if ( method == "textDocument/didClose" )
-      {
-      }
-      else
-      {
-        std::cerr << "Unknown message: " << method << std::endl;
       }
     }
   }

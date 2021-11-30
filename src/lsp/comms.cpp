@@ -19,8 +19,6 @@ namespace lsp
 
   constexpr auto use_nothrow_coro = asio::experimental::as_tuple(
     asio::experimental::use_coro );
-  constexpr auto use_nothrow_awaitable = asio::experimental::as_tuple(
-    asio::use_awaitable );
 
   asio::experimental::coro<json> read_message(
     asio::posix::stream_descriptor str )
@@ -189,7 +187,7 @@ namespace lsp
        << "\r\n\r\n"
        << data;
 
-    co_await asio::async_write( out, buf, use_nothrow_awaitable );
+    co_await asio::async_write( out, buf, asio::use_awaitable );
   }
 
   template< typename id_t >
