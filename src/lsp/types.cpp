@@ -53,4 +53,11 @@ namespace lsp::types
   // }}}
 }
 
+#define LSP_FROM_JSON_OPTIONAL( j, o , v ) do { \
+    if ( j.contains( #v ) )                     \
+    {                                           \
+      o.v = j.at( #v ).get<decltype(o.v)>();    \
+    }                                           \
+  } while( 0 )
+
 // vim: foldmethod=marker

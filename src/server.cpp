@@ -40,6 +40,22 @@
 
 namespace lsp::server
 {
+  template< typename... Ts >
+  void handle_unexpected_exception( std::exception_ptr ep, Ts&&... )
+  {
+    if ( ep )
+    {
+      try
+      {
+        std::rethrow_exception( ep );
+      }
+      catch ( const std::exception& e )
+      {
+        std::cerr << "Unhandled exception! " << e.what() << std::endl;
+      }
+    }
+  }
+
   asio::awaitable<void> dispatch_messages()
   {
     std::cerr << "dispatch_messages starting up" << std::endl;
@@ -52,11 +68,26 @@ namespace lsp::server
     auto r = lsp::read_message( std::move(in) );
     for( ;; )
     {
-      auto [ ec, message_ ] = co_await r.async_resume(
+      auto [ ex_p, message_ ] = co_await r.async_resume(
         use_nothrow_awaitable );
 
-      if ( ec || !message_ )
+      if ( ex_p )
       {
+        try
+        {
+          std::rethrow_exception( ex_p );
+        }
+        catch ( const std::exception& ex_p )
+        {
+          std::cerr << "Exception reading message... "
+                    << ex_p.what()
+                    << std::endl;
+          break;
+        }
+      }
+      else if ( !message_ )
+      {
+        std::cerr << "Empty message!" << std::endl;
         break;
       }
 
@@ -74,10 +105,9 @@ namespace lsp::server
 
       if ( method == "initialize" )
       {
-        const auto& params = message[ "params" ];
         asio::co_spawn( co_await asio::this_coro::executor,
-                        lsp::handlers::on_initialize(out, params ),
-                        asio::detached );
+                        lsp::handlers::on_initialize(out, message ),
+                        handle_unexpected_exception<> );
       }
       else if ( method == "initialized" )
       {
@@ -106,20 +136,16 @@ namespace lsp::server
       }
     }
   }
+
 }
 
 int main( int , char** )
 {
   asio::io_context ctx;
 
-  asio::co_spawn( ctx, lsp::server::dispatch_messages(), asio::detached );
+  asio::co_spawn( ctx,
+                  lsp::server::dispatch_messages(),
+                  lsp::server::handle_unexpected_exception<> );
 
-  try
-  {
-    ctx.run();
-  }
-  catch ( const std::exception &e )
-  {
-    std::cerr << "Exception!!!! " << e.what() << std::endl;
-  }
+  ctx.run();
 }

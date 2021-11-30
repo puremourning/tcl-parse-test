@@ -16,12 +16,13 @@ namespace lsp::handlers
       { "referencesProvider", true },
     } );
 
-    if ( message.contains( "initializationOptions" ) )
-    {
-      server::server_.options = message[ "initializationOptions" ];
-    }
+    const auto& params = message.value( "params", json::object() );
+    server::server_.options = params.value( "initializationOptions",
+                                            json::object() );
 
-    std::cerr << "Options: " << server::server_.options.auto_path.size();
+    std::cerr << "Options: "
+              << server::server_.options.auto_path.size()
+              << std::endl;
 
     co_await send_reply( out, message[ "id" ], response );
   }
