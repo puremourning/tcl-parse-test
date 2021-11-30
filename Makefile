@@ -32,6 +32,7 @@ ANALYZER_SOURCES=src/analyzer.cpp \
 SERVER_SOURCES=src/server.cpp \
 			   src/lsp/types.cpp \
 			   src/lsp/comms.cpp \
+			   src/lsp/server.hpp \
 			   src/lsp/handlers.cpp
 
 BUILD_INF=Makefile
@@ -139,10 +140,11 @@ distclean: clean
 	@rm -rf $(BUILD_DEST)
 	@cd $(TCL)/unix && $(MAKE) distclean
 
-test: $(BIN_DIR)/analyzer
+test: $(BIN_DIR)/analyzer $(BIN_DIR)/server
 	$(BIN_DIR)/analyzer --test
 	$(BIN_DIR)/analyzer --file test/test.tcl
 	$(BIN_DIR)/analyzer --file test/simple.tcl
+	$(BIN_DIR)/server < test/lsp/input 2> test/lsp/cerr
 
 show_%:
 	@echo ${$(@:show_%=%)}

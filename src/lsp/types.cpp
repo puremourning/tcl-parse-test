@@ -6,13 +6,13 @@
 #include <vector>
 #include <json/json.hpp>
 
-namespace lsp
+namespace lsp::types
 {
   // LSP 3.16.0
 
   using json = nlohmann::json;
 
-  // Types {{{
+  // Type defines {{{
   using integer = int64_t;
   using uinteger = uint64_t;
   using decimal = double;
@@ -34,6 +34,10 @@ namespace lsp
   template< typename T > using nullable = one_of< null, T >;
   template< typename... Ts > using optional = std::optional< Ts... >;
 
+  // }}}
+
+  // Basic Structures {{{
+
   struct ResponseError
   {
     integer code;
@@ -45,5 +49,8 @@ namespace lsp
                                     message,
                                     data );
   };
+
+  // }}}
 }
 
+// vim: foldmethod=marker

@@ -11,6 +11,7 @@
 #include <json/json.hpp>
 
 #include "types.cpp"
+#include "server.hpp"
 
 namespace lsp
 {
@@ -207,7 +208,7 @@ namespace lsp
   template< typename id_t >
   asio::awaitable<void> send_reject( asio::posix::stream_descriptor& out,
                                      id_t reply_to,
-                                     const ResponseError& result )
+                                     const types::ResponseError& result )
   {
     json message( json::value_t::object );
     message[ "jsonrpc" ] = "2.0";
@@ -217,15 +218,13 @@ namespace lsp
     co_await send_message( out, std::move( message ) );
   }
 
-  uint64_t next_id = 0;
-
   asio::awaitable<void> send_notification( asio::posix::stream_descriptor& out,
                                            std::string method,
                                            std::optional< json > params )
   {
     json message( json::value_t::object );
     message[ "jsonrpc" ] = "2.0";
-    message[ "id" ] = next_id++;
+    message[ "id" ] = server::server_.next_id++;
     message[ "method" ] = std::move( method );
     if ( params )
     {

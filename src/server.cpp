@@ -20,6 +20,7 @@
 #include <asio.hpp>
 #include <cctype>
 #include <charconv>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <istream>
@@ -39,16 +40,6 @@
 
 namespace lsp::server
 {
-  asio::awaitable<void> handle_test( asio::posix::stream_descriptor& out,
-                                     json message )
-  {
-    json response;
-    response[ "method" ] = "reply";
-    response[ "value" ] = message[ "input" ].get<double>() * 100;
-
-    co_await lsp::send_message( out, response );
-  }
-
   asio::awaitable<void> dispatch_messages()
   {
     std::cerr << "dispatch_messages starting up" << std::endl;
@@ -69,7 +60,7 @@ namespace lsp::server
         break;
       }
 
-      auto& message = *message_;
+      const auto& message = *message_;
 
       // spawn a new handler for this message
       if ( !message.contains("method") )
@@ -77,27 +68,15 @@ namespace lsp::server
         continue;
       }
 
-      auto method = message[ "method" ];
+      const auto& method = message[ "method" ];
 
       std::cerr << "RX: " << message.dump( 2 ) << std::endl;
 
-      if( method == "test" )
+      if ( method == "initialize" )
       {
-        // TODO(Ben): what if we return from this function (and thus `out` goes
-        // out of scope) before this coroutine completes. Does it get cancelled?
-        // we could perhaps solve that by making 'out' a member of main(), but i
-        // would rather understand the actual behaviour/lifetime here, and what
-        // you're supposed to do (like should we have an equivalent of go's wait
-        // group or whatver it's called)
+        const auto& params = message[ "params" ];
         asio::co_spawn( co_await asio::this_coro::executor,
-                        handle_test(out, std::move( message ) ),
-                        asio::detached );
-      }
-      else if ( method == "initialize" )
-      {
-        asio::co_spawn( co_await asio::this_coro::executor,
-                        lsp::handlers::on_initialize(out,
-                                                     std::move( message ) ),
+                        lsp::handlers::on_initialize(out, params ),
                         asio::detached );
       }
       else if ( method == "initialized" )
@@ -111,6 +90,15 @@ namespace lsp::server
       else if ( method == "exit" )
       {
         break;
+      }
+      else if ( method == "textDocument/didOpen" )
+      {
+      }
+      else if ( method == "textDocument/didChange" )
+      {
+      }
+      else if ( method == "textDocument/didClose" )
+      {
       }
       else
       {
@@ -126,5 +114,12 @@ int main( int , char** )
 
   asio::co_spawn( ctx, lsp::server::dispatch_messages(), asio::detached );
 
-  ctx.run();
+  try
+  {
+    ctx.run();
+  }
+  catch ( const std::exception &e )
+  {
+    std::cerr << "Exception!!!! " << e.what() << std::endl;
+  }
 }
