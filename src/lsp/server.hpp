@@ -1,8 +1,12 @@
 #pragma once
 
-#include "types.cpp"
-#include "lsp_serialization.cpp"
+#include <tcl.h>
 #include <unordered_map>
+
+#include <analyzer/index.cpp>
+
+#include "types.cpp"
+
 
 namespace lsp::server
 {
@@ -28,9 +32,26 @@ namespace lsp::server
     WorkspaceOptions options;
     std::unordered_map< std::string, types::TextDocumentItem > documents;
 
+    Index::Index index;
+
     std::string rootUri;
     ClientCapabilities clientCapabilities;
 
     size_t next_id;
+
+    Tcl_Interp* interp;
   } server_; // TODO( just one for now )
+
+  void initialise_server( char ** argv )
+  {
+    server_.index = Index::make_index();
+
+    Tcl_FindExecutable( argv[ 0 ] );
+    server_.interp = Tcl_CreateInterp();
+  }
+
+  void cleanup_server()
+  {
+    Tcl_DeleteInterp( server_.interp );
+  }
 }

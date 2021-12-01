@@ -1,3 +1,4 @@
+#include "lsp/server.hpp"
 #include <asio/awaitable.hpp>
 #include <asio/buffer.hpp>
 #include <asio/buffers_iterator.hpp>
@@ -34,8 +35,8 @@
 #include <span>
 #include <json/json.hpp>
 
-#include "lsp/comms.cpp"
-#include "lsp/handlers.cpp"
+#include <lsp/comms.cpp>
+#include <lsp/handlers.cpp>
 
 namespace lsp::server
 {
@@ -141,13 +142,16 @@ namespace lsp::server
 
 }
 
-int main( int , char** )
+int main( int , char** argv )
 {
   asio::io_context ctx;
+  lsp::server::initialise_server( argv );
 
   asio::co_spawn( ctx,
                   lsp::server::dispatch_messages(),
                   lsp::server::handle_unexpected_exception<> );
 
   ctx.run();
+
+  lsp::server::cleanup_server();
 }

@@ -7,6 +7,9 @@
 #include "comms.cpp"
 #include "server.hpp"
 
+#include <analyzer/source_location.cpp>
+#include <analyzer/script.cpp>
+
 namespace lsp::handlers
 {
   using stream = asio::posix::stream_descriptor;
@@ -54,7 +57,52 @@ namespace lsp::handlers
   {
     DidOpenTextDocumentParams params = message.at( "params" );
 
+    auto& server = server::server_;
+
     auto uri = params.textDocument.uri;
+
+    // TODO(Ben): this is pretty horrific. Parser::SourceFile duplicates the
+    // contents and much other badness. this is just for exploration.
+    Parser::ParseContext context{
+      Parser::make_source_file(
+        uri,
+        params.textDocument.text ) };
+
+    auto script = Parser::ParseScript( server.interp,
+                                       context,
+                                       context.file.contents );
+
+    auto& index = server.index;
+    Index::ScanContext scanContext{
+      .nsPath = { index.global_namespace_id }
+    };
+    Index::Build( index, scanContext, script );
+
+    for ( auto& kv : index.namespaces.byName )
+    {
+      std::cerr << "Namespace: "
+                << Index::GetPrintName( index,
+                                        index.namespaces.Get( kv.second ) )
+                << '\n';
+    }
+
+    for ( auto& kv : index.procs.byName )
+    {
+      std::cerr << "Proc: "
+                << Index::GetPrintName( index, index.procs.Get( kv.second ) )
+                << '\n';
+
+      auto range = index.procs.refsByID.equal_range( kv.second );
+      for ( auto it = range.first; it != range.second; ++it )
+      {
+        auto& r = index.procs.references[ it->second ];
+        std::cerr << "  Ref: "
+                  << Index::GetPrintName( index, index.procs.Get( r->id ) )
+                  << " at " << r->location
+                  << '\n';
+      }
+    }
+
     server::server_.documents.emplace( std::move( uri ),
                                        std::move( params.textDocument ) );
   }

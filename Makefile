@@ -19,21 +19,25 @@ BASICFLAGS=-isystem $(BUILD_DEST)/include \
 		   -isystem $(TCL)/generic -isystem $(TCL)/unix \
 		   -isystem $(ASIO)/include \
 		   -isystem $(JSON) \
+		   -I$(CURDIR)/src \
 		   -std=c++20
+
+LIBANALYZER_SOURCES= src/analyzer/source_location.cpp \
+					 src/analyzer/script.cpp \
+					 src/analyzer/index.cpp \
+					 src/analyzer/db.cpp
 
 # put analyzer.cpp first, as this is the jubo TU
 ANALYZER_SOURCES=src/analyzer.cpp \
-				 src/source_location.cpp \
-				 src/script.cpp \
-				 src/index.cpp \
-				 src/db.cpp
+				 $(LIBANALYZER_SOURCES)
 
 # put server.cpp first, as this is the jubo TU
 SERVER_SOURCES=src/server.cpp \
 			   src/lsp/types.cpp \
 			   src/lsp/comms.cpp \
 			   src/lsp/server.hpp \
-			   src/lsp/handlers.cpp
+			   src/lsp/handlers.cpp \
+			   $(LIBANALYZER_SOURCES)
 
 BUILD_INF=Makefile
 
@@ -56,7 +60,7 @@ LDFLAGS=-L$(BUILD_DEST)/lib -ltcl$(TCL_VERSION) -lz  -lpthread
 
 .PHONY: all clean test help
 
-all: $(BUILD_DEST) $(BIN_DIR)/parse $(BIN_DIR)/analyzer $(BIN_DIR)/server
+all: $(BUILD_DEST)  $(BIN_DIR)/analyzer $(BIN_DIR)/server
 
 help:
 	@echo "Developer build. See also cmake."
@@ -108,9 +112,6 @@ $(TCL_LIB): $(BUILD_DEST) $(TCL_SOURCES)
 
 endif
 
-$(BIN_DIR)/parse: src/parse.cpp $(BUILD_INF) $(TCL_LIB)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-
 $(BIN_DIR)/analyzer: $(ANALYZER_SOURCES) $(BUILD_INF) $(TCL_LIB)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
@@ -134,7 +135,6 @@ clean:
 	@echo Clean $(BUILD_DEST)/
 	rm -f $(BIN_DIR)/analyzer
 	rm -f $(BIN_DIR)/server
-	rm -f $(BIN_DIR)/parse
 
 distclean: clean
 	@rm -rf $(BUILD_DEST)

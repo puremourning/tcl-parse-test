@@ -17,31 +17,12 @@
 // Naughty
 #include <tcl.h>
 #include "tclDecls.h"
-
-#include "source_location.cpp"
-#include "script.cpp"
-#include "db.cpp"
-#include "index.cpp"
 #include "tclInt.h"
 
-namespace Parser
-{
-  struct QualifiedName
-  {
-    std::string ns;
-    std::string name;
-  };
-
-  struct Command
-  {
-    SourceLocation commentLocation;
-    SourceLocation location;
-
-    std::string documenation;
-    QualifiedName command;
-    std::vector< Word > args;
-  };
-}  // namespace Parser
+#include <analyzer/source_location.cpp>
+#include <analyzer/script.cpp>
+#include <analyzer/db.cpp>
+#include <analyzer/index.cpp>
 
 namespace Parser::Test
 {
@@ -94,7 +75,8 @@ int main( int argc, char** argv )
         f >> std::noskipws;  // fucking hell
         std::istream_iterator< char > begin( f );
         std::istream_iterator< char > end;
-        mainFile = Parser::make_source_file( arg, { begin, end } );
+        mainFile = Parser::make_source_file( std::string( arg ),
+                                             { begin, end } );
       }
 
       shift();
