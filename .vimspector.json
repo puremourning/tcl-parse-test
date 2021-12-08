@@ -2,7 +2,6 @@
   "configurations": {
     "Run": {
       "adapter": "CodeLLDB",
-      "default": true,
       "variables": [
         {
           "arch": {
@@ -11,7 +10,7 @@
           "platform": {
             "shell": "uname"
           },
-          "app": "${app:analyzer}"
+          "app": "${app:server}"
         },
         {
           "prog": "${workspaceRoot}/debug-${platform}-${arch}/bin/${app}"
@@ -47,6 +46,7 @@
     },
     "Run with input": {
       "extends": "Run",
+      "default": true,
       "configuration": {
         "stdio": [
           "${cin_file:test/lsp/input}",

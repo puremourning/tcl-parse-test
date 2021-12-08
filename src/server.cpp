@@ -125,6 +125,10 @@ namespace lsp::server
         {
           lsp::handlers::on_textdocument_didclose(out, message );
         }
+        else if ( method == "textDocument/references" )
+        {
+          co_await lsp::handlers::on_textdocument_references( out, message );
+        }
         else
         {
           std::cerr << "Unknown message: " << method << std::endl;

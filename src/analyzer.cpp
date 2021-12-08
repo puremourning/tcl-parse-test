@@ -24,15 +24,6 @@
 #include <analyzer/db.cpp>
 #include <analyzer/index.cpp>
 
-namespace Parser::Test
-{
-  void Run()
-  {
-    TestOffsetToLineByte();
-    TestWord();
-  }
-}  // namespace Parser::Test
-
 int main( int argc, char** argv )
 {
   Tcl_FindExecutable( argv[ 0 ] );
@@ -100,7 +91,10 @@ int main( int argc, char** argv )
     return 1;
   }
 
-  Parser::ParseContext context{ std::move( mainFile ) };
+  Parser::ParseContext context{
+    .file = std::move( mainFile ),
+    .cur_ns = ""
+  };
   auto script = Parser::ParseScript( interp, context, context.file.contents );
 
   // Smenatics to add the tree:

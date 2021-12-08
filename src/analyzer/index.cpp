@@ -22,129 +22,6 @@ namespace Index
 {
   struct Namespace;
 
-  std::vector< std::string_view > SplitPath( std::string_view path )
-  {
-    std::vector< std::string_view > vec;
-    std::string_view::size_type start = 0;
-    for ( std::string_view::size_type cur = 0; cur < path.length(); ++cur )
-    {
-      if ( path[ cur ] == ':' && cur + 1 < path.length() &&
-           path[ cur + 1 ] == ':' )
-      {
-        vec.push_back( path.substr( start, cur - start ) );
-        cur++;
-        start = cur + 1;
-      }
-    }
-
-    vec.push_back( path.substr( start ) );
-
-    return vec;
-  }
-
-  struct QualifiedName
-  {
-    std::optional< std::string > ns;
-    std::string name;
-
-    bool IsAbs() const
-    {
-      if ( !ns )
-      {
-        // no namespace
-        return false;
-      }
-
-      if ( ns.value().empty() )
-      {
-        // global namespace, like ::A
-        return true;
-      }
-
-      if ( ns.value().length() < 2 )
-      {
-        // likely invalid, like :::B
-        return false;
-      }
-
-      if ( ns.value().substr( 0, 2 ) == "::" )
-      {
-        // Has a leading ::, like ::A::B
-        return true;
-      }
-
-      // No leading ::
-      return false;
-    }
-
-    QualifiedName AbsPath( std::string_view current_path ) const
-    {
-      if ( IsAbs() )
-      {
-        return *this;
-      }
-
-      return QualifiedName{ .ns = std::string( current_path ) +
-                                  ( ns.has_value() ? ns.value() : "" ),
-                            .name = name };
-    }
-
-    std::string Path()
-    {
-      if ( ns.has_value() )
-      {
-        return ns.value() + "::" + name;
-      }
-      return name;
-    }
-
-    std::vector< std::string_view > NamespacePath() const
-    {
-      if ( !ns )
-      {
-        return {};
-      }
-
-      bool abs = IsAbs();
-      if ( abs && !ns->empty() )
-      {
-        return SplitPath( std::string_view( *ns ).substr( 2 ) );
-      }
-      else if ( abs )
-      {
-        return {};
-      }
-
-      return SplitPath( std::string_view( *ns ) );
-    }
-  };
-
-  QualifiedName SplitName( std::string_view name )
-  {
-    // If name starts with :: it's absolute and `ns` is ignored
-    // Otherwise we concatenate anything up to the last :: to `ns`
-    // name is always everything after the last ::
-
-    QualifiedName qn;
-    auto pos = name.rfind( "::" );
-    if ( pos == std::string_view::npos )
-    {
-      qn.name = name;
-    }
-    else if ( name.length() > 2 && name.substr( 0, 2 ) == "::" )
-    {
-      qn.name = name.substr( pos + 2 );
-      qn.ns = name.substr( 0, pos );
-    }
-    else
-    {
-      qn.name = name.substr( pos + 2 );
-      qn.ns = name.substr( 0, pos );
-    }
-
-    return qn;
-  }
-
   struct Proc;
   struct Namespace;
   struct Variable;
@@ -292,7 +169,7 @@ namespace Index
     std::optional< NamespaceID > curr_id = e.parent_namespace;
     while ( curr_id )
     {
-      Namespace& curr = index.namespaces.Get( *curr_id );
+      const Namespace& curr = index.namespaces.Get( *curr_id );
       parts.push_back( curr.name );
       curr_id = curr.parent_namespace;
     }
@@ -311,7 +188,7 @@ namespace Index
   }
 
   Namespace& ResolveNamespace( Index& index,
-                               const QualifiedName& qn,
+                               const Parser::QualifiedName& qn,
                                Namespace& ns )
   {
     auto cur_id = ns.id;
@@ -378,7 +255,7 @@ namespace Index
         args.push_back( v.id );
       }
     }
-    auto qn = SplitName( words[ 1 ].text );
+    auto qn = Parser::SplitName( words[ 1 ].text );
     auto& proc = index.procs.Insert( new Proc{
       .name = qn.name,
       .arguments{ std::move( args ) },
@@ -414,7 +291,7 @@ namespace Index
       {
         case Call::Type::NAMESPACE_EVAL:
         {
-          QualifiedName qn = {
+          Parser::QualifiedName qn = {
             .ns = std::string( call.words[ 2 ].text ),
             .name = "",
           };
@@ -568,9 +445,9 @@ namespace Index
       Proc::Reference{ .location = location, .id = proc.id } );
   }
 
-  Proc* FindProc( Index& index, Namespace& ns, const std::string_view& cmdName )
+  Proc* FindProc( Index& index, Namespace& ns, std::string_view cmdName )
   {
-    auto qn = SplitName( cmdName );
+    auto qn = Parser::SplitName( cmdName );
     Namespace::ID target_namespace = ns.id;
 
     auto range = index.procs.byName.equal_range( qn.name );
@@ -618,7 +495,7 @@ namespace Index
       {
         case Call::Type::NAMESPACE_EVAL:
         {
-          QualifiedName qn = {
+          Parser::QualifiedName qn = {
             .ns = std::string( call.words[ 2 ].text ),
             .name = "",
           };
@@ -630,7 +507,8 @@ namespace Index
         }
         case Call::Type::PROC:
         {
-          QualifiedName procName = SplitName( call.words[ 1 ].text );
+          Parser::QualifiedName procName = Parser::SplitName(
+            call.words[ 1 ].text );
           context.nsPath.push_back(
             ResolveNamespace( index, procName, ns ).id );
           IndexWord( index, context, call.words[ 3 ] );
@@ -669,67 +547,68 @@ namespace Index
     IndexScript( index, context, script );
   }
 
+  // TODO: This isn't really a good cursor, as Calls/Scripts don't point to
+  // their parents. If they did we'd have more of a tree cursor
+  struct ScriptCursor
+  {
+    // TODO: Need the namespace here, but that's part of the parser
+    const Parser::Call* call;
+    size_t argument;
+    const Parser::Word* word;
+  };
+
+  ScriptCursor LinePosToScriptPosition( const Parser::Script& script,
+                                        Parser::LinePos pos )
+  {
+    // TODO: binary chop the commands
+    ScriptCursor result = {};
+
+    for ( const auto& call : script.commands )
+    {
+      // TODO: Do namespace tracking like we do above ?
+      //
+      // Or better store the namespace in the Script somehow as part of the
+      // parser walk above (or perhaps move that part to the parser, so the
+      // indexer already has the QualifiedNames)
+      for ( size_t arg = 0; arg < call.words.size(); ++ arg )
+      {
+        const auto& word = call.words[ arg ];
+        if ( word.location.line > pos.line )
+        {
+          goto LinePosToScriptPosition_finished;
+        }
+        else if ( word.location.line == pos.line &&
+                  word.location.column > pos.column )
+        {
+          goto LinePosToScriptPosition_finished;
+        }
+
+        if ( word.type == Parser::Word::Type::SCRIPT )
+        {
+          result = LinePosToScriptPosition(
+            *std::get<Parser::Word::ScriptPtr>( word.data ),
+            pos );
+        }
+        else
+        {
+          result = {
+            .call = &call,
+            .argument = arg,
+            .word = &word
+          };
+        }
+      }
+    }
+    LinePosToScriptPosition_finished:
+      return result;
+  }
+
+
 }  // namespace Index
 
 namespace Index::Test
 {
-  void TestQualifiedName()
-  {
-    struct Test
-    {
-      std::string lexeme;
-      QualifiedName expect;
-      bool isAbs;
-      std::string path;
-    };
-
-    auto fail = 0;
-
-    std::vector< Test > tests = {
-      { "Test", { {}, "Test" }, false, "Test" },
-      { "::Test", { { "" }, "Test" }, true, "::Test" },
-      { "Test::Sub", { { "Test" }, "Sub" }, false, "Test::Sub" },
-      { "::Test::Sub", { { "::Test" }, "Sub" }, true, "::Test::Sub" },
-    };
-
-    for ( auto&& test : tests )
-    {
-      QualifiedName qn = SplitName( test.lexeme );
-      if ( qn.ns != test.expect.ns )
-      {
-        std::cerr << "Expected " << test.lexeme << " to have ns "
-                  << ( test.expect.ns ? *test.expect.ns : "<unset>" )
-                  << " but found " << ( qn.ns ? *qn.ns : "<unset>" );
-        ++fail;
-      }
-      if ( qn.name != test.expect.name )
-      {
-        std::cerr << "Expected " << test.lexeme << " to have name "
-                  << test.expect.name << " but found " << qn.name;
-        ++fail;
-      }
-      if ( qn.Path() != test.path )
-      {
-        std::cerr << "Expected " << test.lexeme << " to have path " << test.path
-                  << " but found " << qn.Path() << "\n";
-        ++fail;
-      }
-      if ( qn.IsAbs() != test.isAbs )
-      {
-        std::cerr << "Expected " << test.lexeme << " to "
-                  << ( test.isAbs ? "be" : "not be" ) << " absolute\n";
-        ++fail;
-      }
-    }
-
-    if ( fail )
-    {
-      abort();
-    }
-  }
-
   void Run()
   {
-    TestQualifiedName();
   }
 }  // namespace Index::Test

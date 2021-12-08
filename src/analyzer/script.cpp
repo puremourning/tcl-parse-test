@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <variant>
 #include <string>
 #include <string_view>
@@ -16,9 +17,144 @@
 
 namespace Parser
 {
+  std::vector< std::string_view > SplitPath( std::string_view path )
+  {
+    std::vector< std::string_view > vec;
+    std::string_view::size_type start = 0;
+    for ( std::string_view::size_type cur = 0; cur < path.length(); ++cur )
+    {
+      if ( path[ cur ] == ':' && cur + 1 < path.length() &&
+           path[ cur + 1 ] == ':' )
+      {
+        vec.push_back( path.substr( start, cur - start ) );
+        cur++;
+        start = cur + 1;
+      }
+    }
+
+    vec.push_back( path.substr( start ) );
+
+    return vec;
+  }
+
+  struct QualifiedName
+  {
+    std::optional< std::string > ns;
+    std::string name;
+
+    bool IsAbs() const
+    {
+      if ( !ns )
+      {
+        // no namespace
+        return false;
+      }
+
+      if ( ns.value().empty() )
+      {
+        // global namespace, like ::A
+        return true;
+      }
+
+      if ( ns.value().length() < 2 )
+      {
+        // likely invalid, like :::B
+        return false;
+      }
+
+      if ( ns.value().substr( 0, 2 ) == "::" )
+      {
+        // Has a leading ::, like ::A::B
+        return true;
+      }
+
+      // No leading ::
+      return false;
+    }
+
+    QualifiedName AbsPath( std::string_view current_path ) const
+    {
+      if ( IsAbs() )
+      {
+        return *this;
+      }
+
+      return QualifiedName{ .ns = std::string( current_path ) +
+                                  ( ns.has_value() ? ns.value() : "" ),
+                            .name = name };
+    }
+
+    std::string Path()
+    {
+      if ( ns.has_value() )
+      {
+        return ns.value() + "::" + name;
+      }
+      return name;
+    }
+
+    std::vector< std::string_view > NamespacePath() const
+    {
+      if ( !ns )
+      {
+        return {};
+      }
+
+      bool abs = IsAbs();
+      if ( abs && !ns->empty() )
+      {
+        return SplitPath( std::string_view( *ns ).substr( 2 ) );
+      }
+      else if ( abs )
+      {
+        return {};
+      }
+
+      return SplitPath( std::string_view( *ns ) );
+    }
+  };
+
+  template< typename Stream >
+  auto& operator<<( Stream& s, const QualifiedName& qn )
+  {
+    if ( qn.ns )
+    {
+      s << * qn.ns << "::";
+    }
+    s << qn.name;
+    return s;
+  }
+
+  QualifiedName SplitName( std::string_view name )
+  {
+    // If name starts with :: it's absolute and `ns` is ignored
+    // Otherwise we concatenate anything up to the last :: to `ns`
+    // name is always everything after the last ::
+
+    QualifiedName qn;
+    auto pos = name.rfind( "::" );
+    if ( pos == std::string_view::npos )
+    {
+      qn.name = name;
+    }
+    else if ( name.length() > 2 && name.substr( 0, 2 ) == "::" )
+    {
+      qn.name = name.substr( pos + 2 );
+      qn.ns = name.substr( 0, pos );
+    }
+    else
+    {
+      qn.name = name.substr( pos + 2 );
+      qn.ns = name.substr( 0, pos );
+    }
+
+    return qn;
+  }
+
   struct ParseContext
   {
     SourceFile file;
+    std::string cur_ns;
   };
 
   struct Script;
@@ -72,6 +208,7 @@ namespace Parser
       USER,
     } type;
     std::vector< Word > words;
+    std::string ns; // lexical namespace in which the call happens
   };
 
   struct Script
@@ -80,13 +217,12 @@ namespace Parser
     std::vector< Call > commands;
   };
 
-
   Script ParseScript( Tcl_Interp* interp,
-                      const ParseContext& context,
+                      ParseContext& context,
                       std::string_view script );
 
   Word ParseWord( Tcl_Interp* interp,
-                  const ParseContext& context,
+                  ParseContext& context,
                   Tcl_Parse& parseResult,
                   size_t& nextToken )
   {
@@ -265,7 +401,7 @@ namespace Parser
   };
 
   void ParseCommand( Tcl_Interp* interp,
-                     const ParseContext& context,
+                     ParseContext& context,
                      Tcl_Parse& parseResult,
                      Script& s )
   {
@@ -275,7 +411,10 @@ namespace Parser
       return;
     }
 
-    auto& call = s.commands.emplace_back( Call{ .type = Call::Type::USER } );
+    auto& call = s.commands.emplace_back( Call{
+      .type = Call::Type::USER,
+      .ns = context.cur_ns,
+    } );
     call.words.reserve( parseResult.numWords );
 
     // TODO: Do this like the TclPro instrumenter:
@@ -378,6 +517,7 @@ namespace Parser
     {
       if ( cmdWord.text == "proc" && parseResult.numWords == 4 )
       {
+        // TODO: absolute namespace proc name
         call.type = Call::Type::PROC;
         parseWord();  // name
         parseArgs();  // arguments TODO: parseScopeArgs() ?
@@ -411,8 +551,18 @@ namespace Parser
              parseResult.numWords == 4 )
         {
           call.type = Call::Type::NAMESPACE_EVAL;
-          parseWord();
+
+          auto& arg = parseWord();
+          auto old_ns = context.cur_ns;
+
+          if ( arg.type == Word::Type::TEXT )
+          {
+            QualifiedName qn = SplitName( arg.text );
+            context.cur_ns = qn.AbsPath( context.cur_ns ).Path();
+          }
+
           parseBody();
+          context.cur_ns = old_ns;
         }
       }
 
@@ -431,7 +581,7 @@ namespace Parser
   }
 
   Script ParseScript( Tcl_Interp* interp,
-                      const ParseContext& context,
+                      ParseContext& context,
                       std::string_view script )
   {
     Tcl_Parse parseResult;
@@ -470,6 +620,61 @@ namespace Parser
 
 namespace Parser::Test
 {
+  void TestQualifiedName()
+  {
+    struct Test
+    {
+      std::string lexeme;
+      QualifiedName expect;
+      bool isAbs;
+      std::string path;
+    };
+
+    auto fail = 0;
+
+    std::vector< Test > tests = {
+      { "Test", { {}, "Test" }, false, "Test" },
+      { "::Test", { { "" }, "Test" }, true, "::Test" },
+      { "Test::Sub", { { "Test" }, "Sub" }, false, "Test::Sub" },
+      { "::Test::Sub", { { "::Test" }, "Sub" }, true, "::Test::Sub" },
+    };
+
+    for ( auto&& test : tests )
+    {
+      QualifiedName qn = SplitName( test.lexeme );
+      if ( qn.ns != test.expect.ns )
+      {
+        std::cerr << "Expected " << test.lexeme << " to have ns "
+                  << ( test.expect.ns ? *test.expect.ns : "<unset>" )
+                  << " but found " << ( qn.ns ? *qn.ns : "<unset>" );
+        ++fail;
+      }
+      if ( qn.name != test.expect.name )
+      {
+        std::cerr << "Expected " << test.lexeme << " to have name "
+                  << test.expect.name << " but found " << qn.name;
+        ++fail;
+      }
+      if ( qn.Path() != test.path )
+      {
+        std::cerr << "Expected " << test.lexeme << " to have path " << test.path
+                  << " but found " << qn.Path() << "\n";
+        ++fail;
+      }
+      if ( qn.IsAbs() != test.isAbs )
+      {
+        std::cerr << "Expected " << test.lexeme << " to "
+                  << ( test.isAbs ? "be" : "not be" ) << " absolute\n";
+        ++fail;
+      }
+    }
+
+    if ( fail )
+    {
+      abort();
+    }
+  }
+
   void TestWord()
   {
     Word w;
@@ -497,5 +702,18 @@ namespace Parser::Test
     std::vector< Word > words;
     words.reserve( 10 );
     words.emplace_back( std::move( w ) );
+  }
+
+  void TestLinePosToScriptCursor()
+  {
+
+  }
+
+  void Run()
+  {
+    TestWord();
+    TestQualifiedName();
+    TestLinePosToScriptCursor();
+    TestOffsetToLineByte();
   }
 }  // namespace Parser::Test

@@ -4,6 +4,7 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <compare>
 
 namespace Parser
 {
@@ -47,13 +48,19 @@ namespace Parser
 
 namespace Parser
 {
-  using LinePos = std::tuple< size_t, size_t >;
+  struct LinePos
+  {
+    size_t line; // 0-based
+    size_t column; // 0-based
+
+    auto operator<=>(const LinePos&) const = default;
+  };
 
   // TODO: SHould i be relying on ADL here, or should this be in the global
   // scope?
   std::ostream& operator<<( std::ostream& o, const LinePos& p )
   {
-    o << std::get< 0 >( p ) << ':' << std::get< 1 >( p );
+    o << p.line + 1 << ':' << p.column + 1;
     return o;
   }
 

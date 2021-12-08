@@ -76,14 +76,19 @@ namespace lsp::types
   {
     DocumentURI uri;
     Range range;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE( Location,
+                                    uri,
+                                    range );
   };
 
   struct TextDocumentIdentifier
   {
     DocumentURI uri;
 
+    #define TextDocumentIdentifier_Items uri
     NLOHMANN_DEFINE_TYPE_INTRUSIVE( TextDocumentIdentifier,
-                                    uri );
+                                    TextDocumentIdentifier_Items );
   };
 
   struct TextDocumentItem
@@ -105,7 +110,7 @@ namespace lsp::types
     integer version;
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE( VersionedTextDocumentIdentifier,
-                                    uri, // TODO(Ben) no inheritance here?
+                                    TextDocumentIdentifier_Items,
                                     version );
   };
 
@@ -114,9 +119,10 @@ namespace lsp::types
     TextDocumentIdentifier textDocument;
     Position position;
 
+    #define TextDocumentPositionParams_Items textDocument, \
+                                             position
     NLOHMANN_DEFINE_TYPE_INTRUSIVE( TextDocumentPositionParams,
-                                    textDocument,
-                                    position );
+                                    TextDocumentPositionParams_Items )
   };
 
   enum class TextDocumentSyncKind

@@ -37,6 +37,7 @@ SERVER_SOURCES=src/server.cpp \
 			   src/lsp/comms.cpp \
 			   src/lsp/server.hpp \
 			   src/lsp/handlers.cpp \
+			   src/lsp/parse_manager.cpp \
 			   $(LIBANALYZER_SOURCES)
 
 BUILD_INF=Makefile
@@ -139,6 +140,8 @@ clean:
 distclean: clean
 	@rm -rf $(BUILD_DEST)
 	@cd $(TCL)/unix && $(MAKE) distclean
+	@rm -f compile_commands.json
+	@rm -rf .cache
 
 test: $(BIN_DIR)/analyzer $(BIN_DIR)/server
 	$(BIN_DIR)/analyzer --test

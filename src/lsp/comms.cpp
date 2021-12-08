@@ -8,6 +8,7 @@
 #include <asio/read_until.hpp>
 #include <asio.hpp>
 #include <charconv>
+#include <iterator>
 #include <json/json.hpp>
 
 #include "types.cpp"
@@ -186,6 +187,11 @@ namespace lsp
        << data.length()
        << "\r\n\r\n"
        << data;
+
+    std::cerr << "TX: Content-Length: "
+              << data.length()
+              << "\r\n\r\n"
+              << data;
 
     co_await asio::async_write( out, buf, asio::use_awaitable );
   }

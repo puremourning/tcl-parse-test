@@ -27,10 +27,17 @@ namespace lsp::server
   {
   };
 
+  struct Document
+  {
+    types::TextDocumentItem item;
+    Parser::ParseContext context;
+    Parser::Script script;
+  };
+
   struct Server
   {
     WorkspaceOptions options;
-    std::unordered_map< std::string, types::TextDocumentItem > documents;
+    std::unordered_map< std::string, Document > documents;
 
     Index::Index index;
 

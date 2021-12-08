@@ -6,6 +6,7 @@
 
 #include "comms.cpp"
 #include "server.hpp"
+#include "parse_manager.cpp"
 
 #include <analyzer/source_location.cpp>
 #include <analyzer/script.cpp>
@@ -39,9 +40,13 @@ namespace lsp::handlers
 
   // }}}
 
+  // Workspace {{{
+
   void on_workspace_didchangeconfiguration( stream&, const json& )
   {
   }
+
+  // }}}
 
   // Text Synchronization {{{
 
@@ -57,54 +62,12 @@ namespace lsp::handlers
   {
     DidOpenTextDocumentParams params = message.at( "params" );
 
-    auto& server = server::server_;
-
     auto uri = params.textDocument.uri;
+    auto [ pos, _ ] = server::server_.documents.emplace(
+      std::move( uri ),
+      lsp::server::Document{ .item = std::move( params.textDocument ) } );
 
-    // TODO(Ben): this is pretty horrific. Parser::SourceFile duplicates the
-    // contents and much other badness. this is just for exploration.
-    Parser::ParseContext context{
-      Parser::make_source_file(
-        uri,
-        params.textDocument.text ) };
-
-    auto script = Parser::ParseScript( server.interp,
-                                       context,
-                                       context.file.contents );
-
-    auto& index = server.index;
-    Index::ScanContext scanContext{
-      .nsPath = { index.global_namespace_id }
-    };
-    Index::Build( index, scanContext, script );
-
-    for ( auto& kv : index.namespaces.byName )
-    {
-      std::cerr << "Namespace: "
-                << Index::GetPrintName( index,
-                                        index.namespaces.Get( kv.second ) )
-                << '\n';
-    }
-
-    for ( auto& kv : index.procs.byName )
-    {
-      std::cerr << "Proc: "
-                << Index::GetPrintName( index, index.procs.Get( kv.second ) )
-                << '\n';
-
-      auto range = index.procs.refsByID.equal_range( kv.second );
-      for ( auto it = range.first; it != range.second; ++it )
-      {
-        auto& r = index.procs.references[ it->second ];
-        std::cerr << "  Ref: "
-                  << Index::GetPrintName( index, index.procs.Get( r->id ) )
-                  << " at " << r->location
-                  << '\n';
-      }
-    }
-
-    server::server_.documents.emplace( std::move( uri ),
-                                       std::move( params.textDocument ) );
+    /* co_await */ parse_manager::Reparse( pos->second );
   }
 
   struct TextDocumentContentChangeEvent
@@ -136,11 +99,13 @@ namespace lsp::handlers
     DidChnageTextDocumentParams params = message.at( "params" );
 
     auto& document = server::server_.documents.at( params.textDocument.uri );
-    if ( document.version < params.textDocument.version &&
+    if ( document.item.version < params.textDocument.version &&
          params.contentChanges.size() == 1 )
     {
-      document.text = params.contentChanges[ 0 ].text;
-      document.version = params.textDocument.version;
+      document.item.text = params.contentChanges[ 0 ].text;
+      document.item.version = params.textDocument.version;
+
+      lsp::parse_manager::Reparse( document );
     }
     // else protocol error!
   }
@@ -158,6 +123,100 @@ namespace lsp::handlers
     DidCloseTextDocumentParams params = message.at( "params" );
     server::server_.documents.erase( params.textDocument.uri );
   }
+  // }}}
+
+  // Language Features {{{
+
+  struct ReferenceContext
+  {
+    types::boolean includeDeclaration;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE( ReferenceContext,
+                                    includeDeclaration );
+  };
+
+  struct ReferencesParams : types::TextDocumentPositionParams
+  {
+    ReferenceContext context;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE( ReferencesParams,
+                                    TextDocumentPositionParams_Items,
+                                    context );
+  };
+
+  asio::awaitable<void> on_textdocument_references( stream& out,
+                                                    const json& message )
+  {
+    ReferencesParams params = message.at( "params" );
+    auto cursor = parse_manager::GetCursor( params );
+
+    if ( !cursor.call || !cursor.word )
+    {
+      co_await send_reject( out, message[ "id" ], {
+        .code = 101,
+        .message = "Invalid position"
+      } );
+      co_return;
+    }
+
+    // TODO: This duplicates a lookup from GetCursor
+    auto& server = server::server_;
+    auto response = json::array();
+
+    switch ( cursor.word->type )
+    {
+      case Parser::Word::Type::ARRAY_ACCESS:
+        // find the array?
+        break;
+
+      case Parser::Word::Type::TEXT:
+        if ( cursor.argument == 0 )
+        {
+          // It's a call, find the references!
+          auto qn = Parser::SplitName( cursor.call->ns );
+          auto& ns = Index::ResolveNamespace(
+            server.index,
+            qn,
+            server.index.namespaces.Get( server.index.global_namespace_id ) );
+
+          auto* p = Index::FindProc( server.index,
+                                     ns,
+                                     cursor.word->text );
+
+          if (!p)
+          {
+            break;
+          }
+
+          auto range = server.index.procs.refsByID.equal_range( p->id );
+          for ( auto it = range.first; it != range.second; ++it )
+          {
+            auto& r = server.index.procs.references[ it->second ];
+            response.push_back( types::Location{
+              .uri = r->location.sourceFile->fileName,
+              .range = {
+                .start = {
+                  .line = r->location.line,
+                  .character = r->location.column
+                },
+                .end = {
+                  .line = r->location.line,
+                  .character = r->location.column,
+                }
+              }
+            } );
+          }
+        }
+        break;
+
+      case Parser::Word::Type::VARIABLE:
+        // return the variable refs
+        break;
+    }
+
+    co_await send_reply( out, message[ "id" ], response );
+  }
+
   // }}}
 }
 

@@ -45,6 +45,13 @@ namespace DB
                                        TValue,
                                        std::tuple< TValue, TRest... > > >;
 
+  template< typename TKey, typename TValue, typename... TRest >
+  using UniqueSortIndex =
+    std::map< TKey,
+              std::conditional_t< sizeof...( TRest ) == 0,
+                                  TValue,
+                                  std::tuple< TValue, TRest... > > >;
+
   // FIXME: Lazy non-serialisable standard library containers
   template< typename T >
   using FreeList = std::deque< T >;
@@ -88,10 +95,12 @@ namespace DB
   };
 
   // OK, we're going all in. CRTP because why the hell not.
-  template< typename TRow >
-  struct NamedRecord : Record< NamedRecord< TRow >, TRow >
+  template< typename TRow,
+            typename TKey = SortIndex<decltype( TRow::name ),
+                                      typename TRow::ID> >
+  struct NamedRecordImpl : Record< NamedRecordImpl< TRow >, TRow >
   {
-    SortIndex< decltype( TRow::name ), typename TRow::ID > byName;
+    TKey byName;
 
     void UpdateKeys( const TRow& row )
     {
@@ -99,8 +108,9 @@ namespace DB
     }
   };
 
-  template< typename TRow >
-  struct RefRecord : NamedRecord< TRow >
+  template< typename TRow,
+            typename TKey = SortIndex< typename TRow::ID, size_t > >
+  struct RefRecordImpl : NamedRecordImpl< TRow >
   {
     using Reference = typename TRow::Reference;
     using ID = typename TRow::ID;
@@ -116,8 +126,20 @@ namespace DB
       return *ref;
     }
 
-    SortIndex< typename TRow::ID, size_t > refsByID;
+    TKey refsByID;
   };
+
+  template< typename TRow >
+  using NamedRecord = NamedRecordImpl< TRow >;
+
+  template< typename TRow >
+  using UniqueNamedRecord =
+    NamedRecordImpl< TRow,
+                     UniqueSortIndex< decltype( TRow::name ),
+                                      typename TRow::ID > >;
+
+  template< typename TRow >
+  using RefRecord = RefRecordImpl< TRow >;
 
 
 }  // namespace DB
