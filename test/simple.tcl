@@ -39,3 +39,7 @@ namespace eval Space2 {
     }
   }
 }
+
+proc ::Space2::Race2 { heaven } {
+  Race
+}

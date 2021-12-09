@@ -93,7 +93,17 @@ namespace Parser
       return name;
     }
 
-    std::vector< std::string_view > NamespacePath() const
+    std::string Namespace()
+    {
+      if ( ns.has_value() )
+      {
+        return ns.value();
+      }
+
+      return "";
+    }
+
+    std::vector< std::string_view > NamespaceParts() const
     {
       if ( !ns )
       {
@@ -111,6 +121,13 @@ namespace Parser
       }
 
       return SplitPath( std::string_view( *ns ) );
+    }
+
+    std::vector< std::string_view > Parts() const
+    {
+      auto parts = NamespaceParts();
+      parts.push_back( name );
+      return parts;
     }
   };
 
@@ -519,9 +536,21 @@ namespace Parser
       {
         // TODO: absolute namespace proc name
         call.type = Call::Type::PROC;
-        parseWord();  // name
+
+        auto& name = parseWord();  // name
         parseArgs();  // arguments TODO: parseScopeArgs() ?
+
+        // TODO: all this copying is annoyting. Maybe actually a stack would be
+        // better
+        auto old_ns = context.cur_ns;
+        if ( name.type == Word::Type::TEXT )
+        {
+          QualifiedName qn = SplitName( name.text );
+          context.cur_ns = qn.AbsPath( context.cur_ns ).Namespace();
+        }
+
         parseBody();  // body
+        context.cur_ns = old_ns;
       }
       else if ( cmdWord.text == "while" && parseResult.numWords == 3 )
       {

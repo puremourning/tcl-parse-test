@@ -192,7 +192,7 @@ namespace Index
                                Namespace& ns )
   {
     auto cur_id = ns.id;
-    std::vector< std::string_view > parts = qn.NamespacePath();
+    std::vector< std::string_view > parts = qn.NamespaceParts();
     if ( qn.IsAbs() )
     {
       cur_id = index.global_namespace_id;
@@ -225,6 +225,37 @@ namespace Index
     }
 
     return index.namespaces.Get( cur_id );
+  }
+
+  Namespace* FindNamespace( const Index& index, std::string_view ns_name )
+  {
+    auto qn = Parser::SplitName( ns_name );
+    assert( qn.IsAbs() );
+    auto cur_id = index.global_namespace_id;
+
+    std::vector< std::string_view > parts = qn.Parts();
+    for ( auto part : parts )
+    {
+      auto& current = index.namespaces.Get( cur_id );
+      auto& children = current.child_namespaces;
+      auto child_pos =
+        std::find_if( children.begin(),
+                      children.end(),
+                      [ & ]( auto child_id ) {
+                        return index.namespaces.Get( child_id ).name == part;
+                      } );
+
+      if ( child_pos == children.end() )
+      {
+        return nullptr;
+      }
+      else
+      {
+        cur_id = *child_pos;
+      }
+    }
+
+    return &index.namespaces.Get( cur_id );
   }
 
   template< typename WordVec >

@@ -173,14 +173,14 @@ namespace lsp::handlers
         if ( cursor.argument == 0 )
         {
           // It's a call, find the references!
-          auto qn = Parser::SplitName( cursor.call->ns );
-          auto& ns = Index::ResolveNamespace(
-            server.index,
-            qn,
-            server.index.namespaces.Get( server.index.global_namespace_id ) );
+          auto* ns = Index::FindNamespace( server.index, cursor.call->ns );
+          if ( !ns )
+          {
+            break;
+          }
 
           auto* p = Index::FindProc( server.index,
-                                     ns,
+                                     *ns,
                                      cursor.word->text );
 
           if (!p)
