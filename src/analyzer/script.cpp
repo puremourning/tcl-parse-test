@@ -41,42 +41,21 @@ namespace Parser
   {
     std::optional< std::string > ns;
     std::string name;
-
-    bool IsAbs() const
-    {
-      if ( !ns )
-      {
-        // no namespace
-        return false;
-      }
-
-      if ( ns.value().empty() )
-      {
-        // global namespace, like ::A
-        return true;
-      }
-
-      if ( ns.value().length() < 2 )
-      {
-        // likely invalid, like :::B
-        return false;
-      }
-
-      if ( ns.value().substr( 0, 2 ) == "::" )
-      {
-        // Has a leading ::, like ::A::B
-        return true;
-      }
-
-      // No leading ::
-      return false;
-    }
+    bool absolute;
 
     QualifiedName AbsPath( std::string_view current_path ) const
     {
-      if ( IsAbs() )
+      if ( absolute )
       {
         return *this;
+      }
+
+      if ( current_path.empty() )
+      {
+        // Empty path is the same as the "::" namespace, so return an "aboslute"
+        // version of *this;
+        return QualifiedName{ .ns = ( ns.has_value() ? "::" + ns.value() : "" ),
+                              .name = name };
       }
 
       return QualifiedName{ .ns = std::string( current_path ) +
@@ -110,12 +89,11 @@ namespace Parser
         return {};
       }
 
-      bool abs = IsAbs();
-      if ( abs && !ns->empty() )
+      if ( absolute && !ns->empty() )
       {
         return SplitPath( std::string_view( *ns ).substr( 2 ) );
       }
-      else if ( abs )
+      else if ( absolute )
       {
         return {};
       }
@@ -126,6 +104,11 @@ namespace Parser
     std::vector< std::string_view > Parts() const
     {
       auto parts = NamespaceParts();
+      if ( name.empty() )
+      {
+        return parts;
+      }
+
       parts.push_back( name );
       return parts;
     }
@@ -149,15 +132,32 @@ namespace Parser
     // name is always everything after the last ::
 
     QualifiedName qn;
+    qn.absolute = false;
     auto pos = name.rfind( "::" );
-    if ( pos == std::string_view::npos )
+    if ( name.empty() )
+    {
+      // The magic :: namespace is treated as an absolute path
+      qn.absolute = true;
+      qn.ns = "";
+      qn.name = "";
+    }
+    else if ( pos == std::string_view::npos )
     {
       qn.name = name;
     }
-    else if ( name.length() > 2 && name.substr( 0, 2 ) == "::" )
+    else if (name.length() >= 2 && name.substr( 0, 2 ) == "::" )
     {
-      qn.name = name.substr( pos + 2 );
-      qn.ns = name.substr( 0, pos );
+      qn.absolute = true;
+      if ( name.length() > 2 )
+      {
+        qn.name = name.substr( pos + 2 );
+        qn.ns = name.substr( 0, pos );
+      }
+      else
+      {
+        qn.name = "";
+        qn.ns = "";
+      }
     }
     else
     {
@@ -655,17 +655,21 @@ namespace Parser::Test
     {
       std::string lexeme;
       QualifiedName expect;
-      bool isAbs;
       std::string path;
+      std::string abspath;
     };
 
     auto fail = 0;
 
     std::vector< Test > tests = {
-      { "Test", { {}, "Test" }, false, "Test" },
-      { "::Test", { { "" }, "Test" }, true, "::Test" },
-      { "Test::Sub", { { "Test" }, "Sub" }, false, "Test::Sub" },
-      { "::Test::Sub", { { "::Test" }, "Sub" }, true, "::Test::Sub" },
+      // :: and "" are treated as equivalent (as a special case)
+      { "::", { { "" }, "", true }, "::", "::" },
+      { "", { { "" }, "", true }, "::", "::" },
+
+      { "Test", { {}, "Test", false }, "Test", "::Test" },
+      { "::Test", { { "" }, "Test", true }, "::Test", "::Test" },
+      { "Test::Sub", { { "Test" }, "Sub", false }, "Test::Sub", "::Test::Sub" },
+      { "::Test::Sub", { { "::Test" }, "Sub", true }, "::Test::Sub", "::Test::Sub" },
     };
 
     for ( auto&& test : tests )
@@ -675,13 +679,15 @@ namespace Parser::Test
       {
         std::cerr << "Expected " << test.lexeme << " to have ns "
                   << ( test.expect.ns ? *test.expect.ns : "<unset>" )
-                  << " but found " << ( qn.ns ? *qn.ns : "<unset>" );
+                  << " but found " << ( qn.ns ? *qn.ns : "<unset>" )
+                  << '\n';
         ++fail;
       }
       if ( qn.name != test.expect.name )
       {
         std::cerr << "Expected " << test.lexeme << " to have name "
-                  << test.expect.name << " but found " << qn.name;
+                  << test.expect.name << " but found " << qn.name
+                  << '\n';
         ++fail;
       }
       if ( qn.Path() != test.path )
@@ -690,11 +696,23 @@ namespace Parser::Test
                   << " but found " << qn.Path() << "\n";
         ++fail;
       }
-      if ( qn.IsAbs() != test.isAbs )
+      if ( qn.absolute != test.expect.absolute )
       {
         std::cerr << "Expected " << test.lexeme << " to "
-                  << ( test.isAbs ? "be" : "not be" ) << " absolute\n";
+                  << ( test.expect.absolute ? "be" : "not be" )
+                  << " absolute\n";
         ++fail;
+      }
+      if ( qn.AbsPath( "" ).Path() != test.abspath )
+      {
+        std::cerr << "Expected "
+                  << test.lexeme
+                  << " to have abspath "
+                  << test.abspath
+                  << " but found "
+                  << qn.AbsPath( "" ).Path() << "\n";
+        ++fail;
+
       }
     }
 

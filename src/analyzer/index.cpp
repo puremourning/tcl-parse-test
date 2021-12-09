@@ -193,7 +193,7 @@ namespace Index
   {
     auto cur_id = ns.id;
     std::vector< std::string_view > parts = qn.NamespaceParts();
-    if ( qn.IsAbs() )
+    if ( qn.absolute )
     {
       cur_id = index.global_namespace_id;
     }
@@ -230,7 +230,7 @@ namespace Index
   Namespace* FindNamespace( const Index& index, std::string_view ns_name )
   {
     auto qn = Parser::SplitName( ns_name );
-    assert( qn.IsAbs() );
+    assert( qn.absolute );
     auto cur_id = index.global_namespace_id;
 
     std::vector< std::string_view > parts = qn.Parts();
@@ -292,7 +292,7 @@ namespace Index
       .arguments{ std::move( args ) },
     } );
 
-    if ( qn.IsAbs() || qn.ns )
+    if ( qn.absolute || qn.ns )
     {
       auto& resolved = ResolveNamespace( index, qn, ns );
       resolved.scope.procs.push_back( proc.id );
@@ -483,7 +483,7 @@ namespace Index
 
     auto range = index.procs.byName.equal_range( qn.name );
 
-    if ( qn.IsAbs() || qn.ns )
+    if ( qn.absolute || qn.ns )
     {
       target_namespace = ResolveNamespace( index, qn, ns ).id;
     }
@@ -497,7 +497,7 @@ namespace Index
       }
     }
 
-    if ( !qn.IsAbs() && ns.parent_namespace )
+    if ( !qn.absolute && ns.parent_namespace )
     {
       // Find in the parent namespace
       // FIXME: This recursion is extremely SUB-optimal. A loop would be much
