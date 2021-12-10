@@ -62,10 +62,9 @@ namespace lsp::handlers
   {
     DidOpenTextDocumentParams params = message.at( "params" );
 
-    auto uri = params.textDocument.uri;
     auto [ pos, _ ] = server::server_.documents.emplace(
-      std::move( uri ),
-      lsp::server::Document{ .item = std::move( params.textDocument ) } );
+      params.textDocument.uri,
+      lsp::server::Document{ .item = params.textDocument } );
 
     /* co_await */ parse_manager::Reparse( pos->second );
   }

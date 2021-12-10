@@ -18,6 +18,8 @@ Content-Length: 1663
 
 {"id":5,"jsonrpc":"2.0","method":"textDocument/references","params":{"context":{"includeDeclaration":true},"position":{"character":2,"line":43},"textDocument":{"uri":"file:///Users/ben/Development/tcl/tcl-parse-test/test/simple.tcl"}}}Content-Length: 234
 
-{"id":2,"jsonrpc":"2.0","method":"textDocument/references","params":{"context":{"includeDeclaration":true},"position":{"character":2,"line":8},"textDocument":{"uri":"file:///Users/ben/Development/tcl/tcl-parse-test/test/simple.tcl"}}}Content-Length: 163
+{"id":2,"jsonrpc":"2.0","method":"textDocument/references","params":{"context":{"includeDeclaration":true},"position":{"character":2,"line":8},"textDocument":{"uri":"file:///Users/ben/Development/tcl/tcl-parse-test/test/simple.tcl"}}}Content-Length: 236
+
+{"id":2,"jsonrpc":"2.0","method":"textDocument/references","params":{"context":{"includeDeclaration":true},"position":{"character":13,"line":23},"textDocument":{"uri":"file:///Users/ben/Development/tcl/tcl-parse-test/test/simple.tcl"}}}Content-Length: 163
 
 {"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"file:///Users/ben/Development/tcl/tcl-parse-test/test/simple.tcl","version":2}}}

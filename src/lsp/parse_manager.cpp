@@ -41,7 +41,7 @@ namespace lsp::parse_manager
 
     // TODO: Check the URI!
     auto& document = server.documents.at( pos.textDocument.uri );
-    return Index::LinePosToScriptPosition(
+    return Index::FindPositionInScript(
       document.script,
       { pos.position.line, pos.position.character } );
   }

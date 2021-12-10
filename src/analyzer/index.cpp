@@ -582,56 +582,87 @@ namespace Index
   // their parents. If they did we'd have more of a tree cursor
   struct ScriptCursor
   {
-    // TODO: Need the namespace here, but that's part of the parser
-    const Parser::Call* call;
-    size_t argument;
-    const Parser::Word* word;
+    const Parser::Call* call{nullptr};
+    size_t argument{0};
+    const Parser::Word* word{nullptr};
   };
 
-  ScriptCursor LinePosToScriptPosition( const Parser::Script& script,
-                                        Parser::LinePos pos )
+  ScriptCursor FindPositionInScript( const Parser::Script& script,
+                                     Parser::LinePos pos );
+
+  std::optional< ScriptCursor > FindPositionInWord( ScriptCursor result,
+                                                    const Parser::Word& word,
+                                                    Parser::LinePos pos )
+  {
+    if ( word.location.line > pos.line )
+    {
+      return std::nullopt;
+    }
+    else if ( word.location.line == pos.line &&
+              word.location.column > pos.column )
+    {
+      return std::nullopt;
+    }
+
+    if ( word.type == Parser::Word::Type::SCRIPT )
+    {
+      result = FindPositionInScript(
+        *std::get<Parser::Word::ScriptPtr>( word.data ),
+        pos );
+    }
+    else if ( word.type == Parser::Word::Type::TOKEN_LIST ||
+              word.type == Parser::Word::Type::EXPAND )
+    {
+        const auto& subWords = std::get< Parser::Word::WordVec >( word.data );
+        for ( const auto& subWord : subWords )
+        {
+          auto subresult = FindPositionInWord( result, subWord, pos );
+          if ( !subresult )
+          {
+            return std::nullopt;
+          }
+          result = *subresult;
+        }
+    }
+    else
+    {
+      result.word = &word;
+    }
+
+    return result;
+  }
+
+  ScriptCursor FindPositionInScript(
+    const Parser::Script& script,
+    Parser::LinePos pos )
   {
     // TODO: binary chop the commands
-    ScriptCursor result = {};
+    std::optional< ScriptCursor > result = ScriptCursor{};
 
     for ( const auto& call : script.commands )
     {
-      // TODO: Do namespace tracking like we do above ?
-      //
-      // Or better store the namespace in the Script somehow as part of the
-      // parser walk above (or perhaps move that part to the parser, so the
-      // indexer already has the QualifiedNames)
       for ( size_t arg = 0; arg < call.words.size(); ++ arg )
       {
         const auto& word = call.words[ arg ];
-        if ( word.location.line > pos.line )
-        {
-          goto LinePosToScriptPosition_finished;
-        }
-        else if ( word.location.line == pos.line &&
-                  word.location.column > pos.column )
-        {
-          goto LinePosToScriptPosition_finished;
-        }
+        std::optional< ScriptCursor > subresult = ScriptCursor{
+          .call = &call,
+          .argument = arg,
+        };
+        subresult = FindPositionInWord( *subresult, word, pos );
 
-        if ( word.type == Parser::Word::Type::SCRIPT )
+        if ( !subresult )
         {
-          result = LinePosToScriptPosition(
-            *std::get<Parser::Word::ScriptPtr>( word.data ),
-            pos );
+          // We've gone past the requested point. discard subresult and return
+          return *result;
         }
         else
         {
-          result = {
-            .call = &call,
-            .argument = arg,
-            .word = &word
-          };
-        }
+          // We're still searching, use the result
+          result = subresult;
+        };
       }
     }
-    LinePosToScriptPosition_finished:
-      return result;
+    return *result;
   }
 
 
