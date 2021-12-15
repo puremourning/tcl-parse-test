@@ -128,12 +128,17 @@ namespace lsp::server
         else if ( method == "textDocument/references" )
         {
           // TODO: co_spawn, rather than block
-          co_await lsp::handlers::on_textdocument_references( out, message );
+          asio::co_spawn( co_await asio::this_coro::executor,
+                          lsp::handlers::on_textdocument_references( out,
+                                                                     message ),
+                          handle_unexpected_exception<> );
         }
         else if ( method == "textDocument/definition" )
         {
-          // TODO: co_spawn, rather than block
-          co_await lsp::handlers::on_textdocument_defintion( out, message );
+          asio::co_spawn( co_await asio::this_coro::executor,
+                          lsp::handlers::on_textdocument_definition( out,
+                                                                     message ),
+                          handle_unexpected_exception<> );
         }
         else
         {

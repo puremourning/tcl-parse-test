@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -79,6 +80,10 @@ namespace Index
     ProcID id;
     std::string name;
     std::vector< VariableID > arguments;
+
+    bool is_variadic; // has args at the end
+    unsigned int required_args; // number of positional args without defaults
+    unsigned int optional_args; // number of positional args with defaults
 
     Scope scope;
     NamespaceID parent_namespace;
@@ -297,51 +302,61 @@ namespace Index
   {
     using Word = Parser::Word;
     // proc name { arg|{ arg default } ... } { body }
-    std::vector< VariableID > args;
+    auto qn = Parser::SplitName( words[ 1 ].text );
+
+    auto proc = std::make_unique<Proc>();
+    proc->name = qn.name;
+
     if ( words[ 2 ].type == Word::Type::LIST )
     {
       auto& vec = std::get< Word::WordVec >( words[ 2 ].data );
-      args.reserve( vec.size() );
-      for ( auto& arg : vec )
+      proc->arguments.reserve( vec.size() );
+      for ( auto it = vec.begin(); it != vec.end(); ++it )
       {
+        auto& arg = *it;
         std::string argName;
         if ( arg.type == Word::Type::TEXT )
         {
+          if ( argName == "args" && ( it + 1 ) == vec.end() )
+          {
+            proc->is_variadic = true;
+          }
+          else
+          {
+            ++proc->required_args;
+          }
+
           argName = arg.text;
         }
         else
         {
+          ++proc->optional_args;
           argName = std::get< Word::WordVec >( arg.data )[ 0 ].text;
         }
-
         auto& v = index.variables.Insert( new Variable{
           .name = std::move( argName ),
         } );
-        args.push_back( v.id );
+        proc->arguments.push_back( v.id );
         // TODO: Add reference with type ReferenceType::DEFINITION
       }
     }
-    auto qn = Parser::SplitName( words[ 1 ].text );
-    auto& proc = index.procs.Insert( new Proc{
-      .name = qn.name,
-      .arguments{ std::move( args ) },
-    } );
 
     if ( qn.absolute || qn.ns )
     {
       auto& resolved = ResolveNamespace( index, qn, ns );
-      resolved.scope.procs.push_back( proc.id );
-      proc.parent_namespace = resolved.id;
+      resolved.scope.procs.push_back( proc->id );
+      proc->parent_namespace = resolved.id;
     }
     else
     {
-      ns.scope.procs.push_back( proc.id );
-      proc.parent_namespace = ns.id;
+      ns.scope.procs.push_back( proc->id );
+      proc->parent_namespace = ns.id;
     }
 
+    auto& p = index.procs.Insert( std::move( proc ) );
     AddCommandReference( index,
                          words[ 1 ].location,
-                         proc,
+                         p,
                          ReferenceType::DEFINITION );
   }
 
@@ -508,7 +523,9 @@ namespace Index
     }
   }
 
-  Proc* FindProc( Index& index, Namespace& ns, std::string_view cmdName )
+  std::vector<Proc*> FindProc( Index& index,
+                               Namespace& ns,
+                               std::string_view cmdName )
   {
     auto qn = Parser::SplitName( cmdName );
     Namespace::ID target_namespace = ns.id;
@@ -520,16 +537,32 @@ namespace Index
       target_namespace = ResolveNamespace( index, qn, ns ).id;
     }
 
+    std::vector<Proc*> result;
+    result.reserve( std::distance( range.first, range.second ) );
+
     for ( auto it = range.first; it != range.second; ++it )
     {
       auto& p = index.procs.Get( it->second );
       if ( p.parent_namespace == target_namespace )
       {
-        return &p;
+        // NOTE: It's possible to have multiple definitions for the same proc.
+        // for example:
+        //
+        // if { $x } {
+        //   proc Proc {} {}
+        // } else {
+        //   proc Proc { x y z } {}
+        // }
+        //
+        // By indexing everything on the proc's name and namespace, we always
+        // pick whichever one is found first; so we actually use more semantic
+        // information around the proc usage (e.g. number of args specified) to
+        // determine the proc, by calling BestFitProcToCall
+        result.push_back( &p );
       }
     }
 
-    if ( !qn.absolute && ns.parent_namespace )
+    if ( result.empty() && !qn.absolute && ns.parent_namespace )
     {
       // Find in the parent namespace
       // FIXME: This recursion is extremely SUB-optimal. A loop would be much
@@ -539,7 +572,55 @@ namespace Index
                        cmdName );
     }
 
-    return nullptr;
+    return result;
+  }
+
+  Proc* BestFitProcToCall( std::vector<Proc*> procs,
+                           const Parser::Call& call )
+  {
+    auto num_args = call.words.size() - 1;
+
+    Proc* best_fit = nullptr;
+
+    // TODO: Worlds shittiest overload resolution? This is really just
+    // guessing (badly) based on the number of arguments.
+    //
+    // FIXME: best_fit is actualy last_fit
+    for( auto* proc : procs )
+    {
+      if ( !best_fit )
+      {
+        best_fit = proc;
+        continue;
+      }
+
+      if ( num_args < proc->required_args )
+      {
+        continue;
+      }
+
+      if ( num_args == proc->required_args )
+      {
+        best_fit = proc;
+        break;
+      }
+
+      if ( num_args <= proc->required_args + proc->optional_args )
+      {
+        // This is a _good_ fit, but hard to know if it is _better_ than
+        // what we have in best_fit right now.
+        best_fit = proc;
+        continue;
+      }
+
+      if ( proc->is_variadic )
+      {
+        best_fit = proc;
+        continue;
+      }
+    }
+
+    return best_fit;
   }
 
 
@@ -581,12 +662,14 @@ namespace Index
         }
         case Call::Type::USER:
         {
-          if ( Proc* proc = FindProc( index, ns, call.words[ 0 ].text ) )
+          auto procs = FindProc( index, ns, call.words[ 0 ].text );
+          auto* best_fit = BestFitProcToCall( procs, call );
+          if ( best_fit )
           {
             // Add a reference to the proc being called if we can
             AddCommandReference( index,
                                  call.words[ 0 ].location,
-                                 *proc,
+                                 *best_fit,
                                  ReferenceType::USAGE );
           }
         }

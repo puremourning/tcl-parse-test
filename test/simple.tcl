@@ -13,9 +13,16 @@ proc Test {} {
 
 Test
 
+proc Test { a b c } {
+  puts " Another one ? "
+  ::Test
+}
+
+Test a b c
+
 namespace eval Space {
   proc Race {} {
-    ::Test
+    ::Test a b c
   }
 
   namespace eval Rice {

@@ -179,9 +179,10 @@ namespace lsp::handlers
             break;
           }
 
-          auto* p = Index::FindProc( server.index,
-                                     *ns,
-                                     cursor.word->text );
+          auto procs = Index::FindProc( server.index,
+                                        *ns,
+                                        cursor.word->text );
+          auto* p = Index::BestFitProcToCall( procs, *cursor.call );
 
           if (!p)
           {
@@ -219,8 +220,8 @@ namespace lsp::handlers
 
   using DefinitionParams = types::TextDocumentPositionParams;
 
-  asio::awaitable<void> on_textdocument_defintion( stream& out,
-                                                   const json& message )
+  asio::awaitable<void> on_textdocument_definition( stream& out,
+                                                    const json& message )
   {
     DefinitionParams params = message.at( "params" );
     auto cursor = parse_manager::GetCursor( params );
@@ -254,9 +255,10 @@ namespace lsp::handlers
             break;
           }
 
-          auto* p = Index::FindProc( server.index,
-                                     *ns,
-                                     cursor.word->text );
+          auto procs = Index::FindProc( server.index,
+                                        *ns,
+                                        cursor.word->text );
+          auto* p = Index::BestFitProcToCall( procs, *cursor.call );
 
           if (!p)
           {
