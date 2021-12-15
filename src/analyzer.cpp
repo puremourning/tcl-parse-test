@@ -160,7 +160,7 @@ int main( int argc, char** argv )
     for ( auto it = range.first; it != range.second; ++it )
     {
       auto& r = index.procs.references[ it->second ];
-      std::cout << "  Ref: "
+      std::cout << "  " << r->type << " Ref: "
                 << Index::GetPrintName( index, index.procs.Get( r->id ) )
                 << " at " << r->location
                 << '\n';

@@ -33,6 +33,24 @@ namespace Index
   using ProcID = ID;
   using NamespaceID = ID;
 
+  enum class ReferenceType
+  {
+    USAGE,
+    DEFINITION,
+    DECLARAION
+  };
+
+  auto& operator<<( auto& o, ReferenceType t )
+  {
+    switch ( t )
+    {
+      case ReferenceType::USAGE: o << "Usage"; break;
+      case ReferenceType::DEFINITION: o << "Definition"; break;
+      case ReferenceType::DECLARAION: o << "Declaration"; break;
+    }
+    return o;
+  }
+
   struct Variable
   {
     using ID = VariableID;
@@ -44,6 +62,7 @@ namespace Index
     {
       Parser::SourceLocation location;
       VariableID id;
+      ReferenceType type;
     };
   };
 
@@ -68,6 +87,7 @@ namespace Index
     {
       Parser::SourceLocation location;
       ProcID id;
+      ReferenceType type;
     };
   };
 
@@ -85,6 +105,7 @@ namespace Index
     {
       Parser::SourceLocation location;
       NamespaceID id;
+      ReferenceType type;
     };
   };
 
@@ -258,6 +279,19 @@ namespace Index
     return &index.namespaces.Get( cur_id );
   }
 
+  void AddCommandReference( Index& index,
+                            const Parser::SourceLocation& location,
+                            const Proc& proc,
+                            ReferenceType type )
+  {
+    index.procs.AddReference(
+      Proc::Reference {
+        .location = location,
+        .id = proc.id,
+        .type = type
+      } );
+  }
+
   template< typename WordVec >
   void AddProcToIndex( Index& index, Namespace& ns, const WordVec& words )
   {
@@ -284,6 +318,7 @@ namespace Index
           .name = std::move( argName ),
         } );
         args.push_back( v.id );
+        // TODO: Add reference with type ReferenceType::DEFINITION
       }
     }
     auto qn = Parser::SplitName( words[ 1 ].text );
@@ -303,6 +338,11 @@ namespace Index
       ns.scope.procs.push_back( proc.id );
       proc.parent_namespace = ns.id;
     }
+
+    AddCommandReference( index,
+                         words[ 1 ].location,
+                         proc,
+                         ReferenceType::DEFINITION );
   }
 
   void ScanScript( Index& index,
@@ -468,14 +508,6 @@ namespace Index
     }
   }
 
-  void AddCommandReference( Index& index,
-                            const Parser::SourceLocation& location,
-                            const Proc& proc )
-  {
-    index.procs.AddReference(
-      Proc::Reference{ .location = location, .id = proc.id } );
-  }
-
   Proc* FindProc( Index& index, Namespace& ns, std::string_view cmdName )
   {
     auto qn = Parser::SplitName( cmdName );
@@ -552,7 +584,10 @@ namespace Index
           if ( Proc* proc = FindProc( index, ns, call.words[ 0 ].text ) )
           {
             // Add a reference to the proc being called if we can
-            AddCommandReference( index, call.words[ 0 ].location, *proc );
+            AddCommandReference( index,
+                                 call.words[ 0 ].location,
+                                 *proc,
+                                 ReferenceType::USAGE );
           }
         }
 
@@ -632,11 +667,11 @@ namespace Index
     return result;
   }
 
-  ScriptCursor FindPositionInScript(
-    const Parser::Script& script,
+  ScriptCursor FindPositionInScript( const Parser::Script& script,
     Parser::LinePos pos )
   {
-    // TODO: binary chop the commands
+    // TODO: binary chop the commands, which are neccesarily sorted by line
+    // number
     std::optional< ScriptCursor > result = ScriptCursor{};
 
     for ( const auto& call : script.commands )
