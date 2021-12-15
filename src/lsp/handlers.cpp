@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "comms.cpp"
+#include "lsp/types.cpp"
 #include "server.hpp"
 #include "parse_manager.cpp"
 
@@ -26,7 +27,8 @@ namespace lsp::handlers
             { "openClose", true },
             { "change", types::TextDocumentSyncKind::Full },
           }
-        }
+        },
+        { "definitionProvider", true },
       } );
 
     const auto& params = message.value( "params", json::object() );
@@ -158,7 +160,6 @@ namespace lsp::handlers
       co_return;
     }
 
-    // TODO: This duplicates a lookup from GetCursor
     auto& server = server::server_;
     auto response = json::array();
 
@@ -215,6 +216,87 @@ namespace lsp::handlers
 
     co_await send_reply( out, message[ "id" ], response );
   }
+
+  using DefinitionParams = types::TextDocumentPositionParams;
+
+  asio::awaitable<void> on_textdocument_defintion( stream& out,
+                                                   const json& message )
+  {
+    DefinitionParams params = message.at( "params" );
+    auto cursor = parse_manager::GetCursor( params );
+
+    if ( !cursor.call || !cursor.word )
+    {
+      co_await send_reject( out, message[ "id" ], {
+        .code = 101,
+        .message = "Invalid position"
+      } );
+      co_return;
+    }
+
+    auto& server = server::server_;
+    auto response = json::array();
+
+    // TODO/FIXME: Copy pasta above
+    switch ( cursor.word->type )
+    {
+      case Parser::Word::Type::ARRAY_ACCESS:
+        // find the array?
+        break;
+
+      case Parser::Word::Type::TEXT:
+        if ( cursor.argument == 0 )
+        {
+          // It's a call, find the references!
+          auto* ns = Index::FindNamespace( server.index, cursor.call->ns );
+          if ( !ns )
+          {
+            break;
+          }
+
+          auto* p = Index::FindProc( server.index,
+                                     *ns,
+                                     cursor.word->text );
+
+          if (!p)
+          {
+            break;
+          }
+
+          auto range = server.index.procs.refsByID.equal_range( p->id );
+          for ( auto it = range.first; it != range.second; ++it )
+          {
+            auto& r = server.index.procs.references[ it->second ];
+            if ( r->type != Index::ReferenceType::DEFINITION )
+            {
+              continue;
+            }
+
+            response.push_back( types::Location{
+              .uri = r->location.sourceFile->fileName,
+              .range = {
+                .start = {
+                  .line = r->location.line,
+                  .character = r->location.column
+                },
+                .end = {
+                  .line = r->location.line,
+                  .character = r->location.column,
+                }
+              }
+            } );
+          }
+        }
+        break;
+
+      case Parser::Word::Type::VARIABLE:
+        // return the variable refs
+        break;
+    }
+
+    co_await send_reply( out, message[ "id" ], response );
+  }
+
 
   // }}}
 }

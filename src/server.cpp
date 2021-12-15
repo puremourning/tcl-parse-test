@@ -127,7 +127,13 @@ namespace lsp::server
         }
         else if ( method == "textDocument/references" )
         {
+          // TODO: co_spawn, rather than block
           co_await lsp::handlers::on_textdocument_references( out, message );
+        }
+        else if ( method == "textDocument/definition" )
+        {
+          // TODO: co_spawn, rather than block
+          co_await lsp::handlers::on_textdocument_defintion( out, message );
         }
         else
         {
