@@ -56,14 +56,14 @@ namespace lsp::server
     }
   }
 
-  asio::awaitable<void> dispatch_messages()
+  asio::awaitable<void> dispatch_messages(lsp::server::Server& server)
   {
     std::cerr << "dispatch_messages starting up" << std::endl;
 
     asio::posix::stream_descriptor in(co_await asio::this_coro::executor,
                                       ::dup(STDIN_FILENO));
     asio::posix::stream_descriptor out(co_await asio::this_coro::executor,
-                                      ::dup(STDOUT_FILENO));
+                                       ::dup(STDOUT_FILENO));
 
     auto r = lsp::read_message( std::move(in) );
     for( ;; )
@@ -94,7 +94,9 @@ namespace lsp::server
         if ( method == "initialize" )
         {
           asio::co_spawn( co_await asio::this_coro::executor,
-                          lsp::handlers::handle_initialize(out, message ),
+                          lsp::handlers::handle_initialize(server,
+                                                           out,
+                                                           message ),
                           handle_unexpected_exception<> );
         }
         else if ( method == "initialized" )
@@ -103,6 +105,7 @@ namespace lsp::server
         }
         else if ( method == "shutdown" )
         {
+          // We do wait for the reply to be sent sync here
           co_await send_reply( out, message[ "id" ], {} );
         }
         else if ( method == "exit" )
@@ -111,32 +114,48 @@ namespace lsp::server
         }
         else if ( method == "workspace/didChangeConfiguration" )
         {
-            lsp::handlers::on_workspace_didchangeconfiguration(out, message );
+            lsp::handlers::on_workspace_didchangeconfiguration(server,
+                                                               out,
+                                                               message );
         }
         else if ( method == "textDocument/didOpen" )
         {
-          lsp::handlers::on_textdocument_didopen(out, message );
+          asio::co_spawn( co_await asio::this_coro::executor,
+                          lsp::handlers::on_textdocument_didopen(server,
+                                                                 out,
+                                                                 message ),
+                          handle_unexpected_exception<> );
         }
         else if ( method == "textDocument/didChange" )
         {
-          lsp::handlers::on_textdocument_didchange(out, message );
+          asio::co_spawn( co_await asio::this_coro::executor,
+                          lsp::handlers::on_textdocument_didchange(server,
+                                                                   out,
+                                                                   message ),
+                          handle_unexpected_exception<> );
         }
         else if ( method == "textDocument/didClose" )
         {
-          lsp::handlers::on_textdocument_didclose(out, message );
+          asio::co_spawn( co_await asio::this_coro::executor,
+                          lsp::handlers::on_textdocument_didclose(server,
+                                                                  out,
+                                                                  message ),
+                          handle_unexpected_exception<> );
         }
         else if ( method == "textDocument/references" )
         {
           // TODO: co_spawn, rather than block
           asio::co_spawn( co_await asio::this_coro::executor,
-                          lsp::handlers::on_textdocument_references( out,
+                          lsp::handlers::on_textdocument_references( server,
+                                                                     out,
                                                                      message ),
                           handle_unexpected_exception<> );
         }
         else if ( method == "textDocument/definition" )
         {
           asio::co_spawn( co_await asio::this_coro::executor,
-                          lsp::handlers::on_textdocument_definition( out,
+                          lsp::handlers::on_textdocument_definition( server,
+                                                                     out,
                                                                      message ),
                           handle_unexpected_exception<> );
         }
@@ -154,19 +173,18 @@ namespace lsp::server
       }
     }
   }
-
 }
 
 int main( int , char** argv )
 {
   asio::io_context ctx;
-  lsp::server::initialise_server( argv );
+  lsp::server::Server the_server( argv );
 
   asio::co_spawn( ctx,
-                  lsp::server::dispatch_messages(),
+                  lsp::server::dispatch_messages(the_server),
                   lsp::server::handle_unexpected_exception<> );
 
-  ctx.run();
 
-  lsp::server::cleanup_server();
+  ctx.run();
+  std::cerr << "Main loop finished" << std::endl;
 }

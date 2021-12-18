@@ -3,7 +3,8 @@ ASIO ?= vendor/asio
 JSON ?= vendor/nlohmann
 
 TCL_VERSION=9.0
-DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra
+DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra \
+		   -DASIO_ENABLE_HANDLER_TRACKING=ON
 RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
 ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
 

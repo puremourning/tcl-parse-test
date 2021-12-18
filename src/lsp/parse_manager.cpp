@@ -1,21 +1,20 @@
 #include "lsp/server.hpp"
 #include "lsp/types.cpp"
+#include <asio/awaitable.hpp>
 
 namespace lsp::parse_manager
 {
-  void Clear( const std::string& /*uri TODO*/ )
-  {
-    auto& server = server::server_;
+  using server::Server;
 
+  void Clear( Server& server, const std::string& /*uri TODO*/ )
+  {
     // TODO(Ben) WAAAAHAHAHAAHAHA
     server.index = Index::make_index();
   }
 
-  void Reparse( server::Document& doc )
+  asio::awaitable<void> Reparse( Server& server, server::Document& doc )
   {
-    auto& server = server::server_;
-
-    Clear( doc.item.uri ); // TOOD(Ben): Bad, slow, lame.
+    Clear( server, doc.item.uri ); // TOOD(Ben): Bad, slow, lame.
 
     // TODO(Ben): this is pretty horrific. Parser::SourceFile duplicates the
     // contents and much other badness. this is just for exploration.
@@ -33,12 +32,12 @@ namespace lsp::parse_manager
       .nsPath = { index.global_namespace_id }
     };
     Index::Build( index, scanContext, doc.script );
+    co_return;
   }
 
-  auto GetCursor( const types::TextDocumentPositionParams pos )
+  auto GetCursor( Server& server,
+                  const types::TextDocumentPositionParams pos )
   {
-    auto& server = server::server_;
-
     // TODO: Check the URI!
     auto& document = server.documents.at( pos.textDocument.uri );
     return Index::FindPositionInScript(

@@ -222,13 +222,15 @@ namespace lsp
     co_await send_message( out, std::move( message ) );
   }
 
-  asio::awaitable<void> send_notification( asio::posix::stream_descriptor& out,
+  // id should be server.next_id++;
+  asio::awaitable<void> send_notification( types::uinteger id,
+                                           asio::posix::stream_descriptor& out,
                                            std::string method,
                                            std::optional< json > params )
   {
     json message( json::value_t::object );
     message[ "jsonrpc" ] = "2.0";
-    message[ "id" ] = server::server_.next_id++;
+    message[ "id" ] = id,
     message[ "method" ] = std::move( method );
     if ( params )
     {

@@ -1,5 +1,7 @@
 #include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
 #include <asio/posix/stream_descriptor.hpp>
+#include <asio/use_awaitable.hpp>
 #include <iostream>
 #include <json/json.hpp>
 #include <optional>
@@ -15,8 +17,11 @@
 namespace lsp::handlers
 {
   using stream = asio::posix::stream_descriptor;
+  using Server = lsp::server::Server;
+
   // General Messages {{{
-  asio::awaitable<void> handle_initialize( stream& out,
+  asio::awaitable<void> handle_initialize( Server& server,
+                                           stream& out,
                                            const json& message )
   {
     auto response = json::object();
@@ -33,9 +38,8 @@ namespace lsp::handlers
 
     const auto& params = message.value( "params", json::object() );
 
-    server::server_.options = params.value( "initializationOptions",
-                                            json::object() );
-    server::server_.rootUri = params.value( "rootUri", "" );
+    server.options = params.value( "initializationOptions", json::object() );
+    server.rootUri = params.value( "rootUri", "" );
 
     co_await send_reply( out, message[ "id" ], response );
   }
@@ -44,7 +48,9 @@ namespace lsp::handlers
 
   // Workspace {{{
 
-  void on_workspace_didchangeconfiguration( stream&, const json& )
+  void on_workspace_didchangeconfiguration( Server&,
+                                            stream&,
+                                            const json& )
   {
   }
 
@@ -60,15 +66,19 @@ namespace lsp::handlers
                                     textDocument );
   };
 
-  void on_textdocument_didopen( stream&, const json& message )
+  asio::awaitable<void> on_textdocument_didopen( Server& server,
+                                                 stream&,
+                                                 const json& message )
   {
     DidOpenTextDocumentParams params = message.at( "params" );
 
-    auto [ pos, _ ] = server::server_.documents.emplace(
+    auto [ pos, _ ] = server.documents.emplace(
       params.textDocument.uri,
       lsp::server::Document{ .item = params.textDocument } );
 
-    /* co_await */ parse_manager::Reparse( pos->second );
+    co_await asio::co_spawn( server.index_queue,
+                             lsp::parse_manager::Reparse( server, pos->second ),
+                             asio::use_awaitable );
   }
 
   struct TextDocumentContentChangeEvent
@@ -95,18 +105,22 @@ namespace lsp::handlers
                                     contentChanges );
   };
 
-  void on_textdocument_didchange( stream&, const json& message )
+  asio::awaitable<void> on_textdocument_didchange( Server& server,
+                                                   stream&,
+                                                   const json& message )
   {
     DidChnageTextDocumentParams params = message.at( "params" );
 
-    auto& document = server::server_.documents.at( params.textDocument.uri );
+    auto& document = server.documents.at( params.textDocument.uri );
     if ( document.item.version < params.textDocument.version &&
          params.contentChanges.size() == 1 )
     {
       document.item.text = params.contentChanges[ 0 ].text;
       document.item.version = params.textDocument.version;
 
-      lsp::parse_manager::Reparse( document );
+      co_await asio::co_spawn( server.index_queue,
+                               lsp::parse_manager::Reparse( server, document ),
+                               asio::use_awaitable );
     }
     // else protocol error!
   }
@@ -119,11 +133,22 @@ namespace lsp::handlers
                                     textDocument );
   };
 
-  void on_textdocument_didclose( stream&, const json& message )
+  asio::awaitable<void> on_textdocument_didclose( Server& server,
+                                                  stream&,
+                                                  const json& message )
   {
     DidCloseTextDocumentParams params = message.at( "params" );
-    server::server_.documents.erase( params.textDocument.uri );
+
+    auto coro = [&]() -> asio::awaitable<void> {
+      server.documents.erase( params.textDocument.uri );
+      co_return;
+    };
+
+    co_await asio::co_spawn( server.index_queue,
+                             coro,
+                             asio::use_awaitable );
   }
+
   // }}}
 
   // Language Features {{{
@@ -145,11 +170,12 @@ namespace lsp::handlers
                                     context );
   };
 
-  asio::awaitable<void> on_textdocument_references( stream& out,
+  asio::awaitable<void> on_textdocument_references( Server& server,
+                                                    stream& out,
                                                     const json& message )
   {
     ReferencesParams params = message.at( "params" );
-    auto cursor = parse_manager::GetCursor( params );
+    auto cursor = parse_manager::GetCursor( server, params );
 
     if ( !cursor.call || !cursor.word )
     {
@@ -160,7 +186,6 @@ namespace lsp::handlers
       co_return;
     }
 
-    auto& server = server::server_;
     auto response = json::array();
 
     switch ( cursor.word->type )
@@ -220,11 +245,12 @@ namespace lsp::handlers
 
   using DefinitionParams = types::TextDocumentPositionParams;
 
-  asio::awaitable<void> on_textdocument_definition( stream& out,
+  asio::awaitable<void> on_textdocument_definition( Server& server,
+                                                    stream& out,
                                                     const json& message )
   {
     DefinitionParams params = message.at( "params" );
-    auto cursor = parse_manager::GetCursor( params );
+    auto cursor = parse_manager::GetCursor( server, params );
 
     if ( !cursor.call || !cursor.word )
     {
@@ -235,7 +261,6 @@ namespace lsp::handlers
       co_return;
     }
 
-    auto& server = server::server_;
     auto response = json::array();
 
     // TODO/FIXME: Copy pasta above

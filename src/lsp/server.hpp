@@ -1,6 +1,10 @@
 #pragma once
 
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
+#include <asio/strand.hpp>
 #include <tcl.h>
+#include <thread>
 #include <unordered_map>
 
 #include <analyzer/index.cpp>
@@ -34,31 +38,53 @@ namespace lsp::server
     Parser::Script script;
   };
 
-  struct Server
+  struct Server final
   {
     WorkspaceOptions options;
     std::unordered_map< std::string, Document > documents;
 
-    Index::Index index;
+    Index::Index index = Index::make_index();
 
     std::string rootUri;
     ClientCapabilities clientCapabilities;
 
-    size_t next_id;
+    size_t next_id{0};
 
-    Tcl_Interp* interp;
-  } server_; // TODO( just one for now )
+    Tcl_Interp* interp{nullptr};
 
-  void initialise_server( char ** argv )
-  {
-    server_.index = Index::make_index();
+    std::vector<std::thread> background_threads;
+    asio::io_context background;
+    asio::strand<asio::io_context::executor_type> index_queue =
+      asio::make_strand(background.get_executor());
 
-    Tcl_FindExecutable( argv[ 0 ] );
-    server_.interp = Tcl_CreateInterp();
-  }
+    Server( char** argv )
+    {
+      Tcl_FindExecutable( argv[ 0 ] );
+      interp = Tcl_CreateInterp();
 
-  void cleanup_server()
-  {
-    Tcl_DeleteInterp( server_.interp );
-  }
+      for ( int i = 0; i < 4; ++i )
+      {
+        background_threads.emplace_back( [this]() {
+          // prevent run from returning
+          auto guard = asio::make_work_guard(background.get_executor());
+          background.run();
+        } );
+      }
+    }
+
+    ~Server()
+    {
+      Tcl_DeleteInterp( interp );
+
+      background.stop();
+
+      for ( auto& t: background_threads )
+      {
+        if ( t.joinable() )
+        {
+          t.join();
+        }
+      }
+    }
+  };
 }
