@@ -37,6 +37,7 @@ namespace lsp::server
     types::TextDocumentItem item;
     Parser::ParseContext context;
     Parser::Script script;
+    enum class State { OPEN, CLOSED } state = State::OPEN;
   };
 
   struct Server final

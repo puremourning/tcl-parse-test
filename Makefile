@@ -7,6 +7,7 @@ DEBUGFLAGS=-g -O0 -fno-omit-frame-pointer -Wall -Wextra \
 		   -DASIO_ENABLE_HANDLER_TRACKING=ON
 RELEASEFLAGS=-g -O2 -Wall -Wextra -Werror
 ASANFLAGS=-fsanitize=address,undefined -fsanitize-recover=address
+TSANFLAGS=-fsanitize=thread
 
 # debug/release
 TARGET ?= debug
@@ -46,7 +47,9 @@ BUILD_INF=Makefile
 CPPFLAGS=$(BASICFLAGS)
 ifeq ($(TARGET),debug)
 	ifeq ($(NOASAN),)
-		ASAN=1
+		ifeq ($(TSAN),)
+			ASAN=1
+		endif
 	endif
 
 	CPPFLAGS+=$(DEBUGFLAGS)
@@ -56,6 +59,10 @@ endif
 
 ifeq ($(ASAN),1)
 	CPPFLAGS+=$(ASANFLAGS)
+endif
+
+ifeq ($(TSAN),1)
+	CPPFLAGS+=$(TSANFLAGS)
 endif
 
 LDFLAGS=-L$(BUILD_DEST)/lib -ltcl$(TCL_VERSION) -lz  -lpthread

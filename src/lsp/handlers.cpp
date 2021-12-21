@@ -4,6 +4,7 @@
 #include <asio/use_awaitable.hpp>
 #include <iostream>
 #include <json/json.hpp>
+#include <mutex>
 #include <optional>
 
 #include "comms.cpp"
@@ -134,20 +135,18 @@ namespace lsp::handlers
                                     textDocument );
   };
 
-  asio::awaitable<void> on_textdocument_didclose( Server& server,
-                                                  stream&,
-                                                  const json& message )
+  void on_textdocument_didclose( Server& server,
+                                 stream&,
+                                 const json& message )
   {
     DidCloseTextDocumentParams params = message.at( "params" );
 
-    auto coro = [&]() -> asio::awaitable<void> {
-      server.documents.erase( params.textDocument.uri );
-      co_return;
-    };
-
-    co_await asio::co_spawn( server.index_queue,
-                             coro,
-                             asio::use_awaitable );
+    std::unique_lock l(server.index_lock);
+    auto& document = server.documents.at( params.textDocument.uri );
+    // State that we're using the filesystem version of the doc now.
+    // TODO: Should we queue parsing of the filesystem version?
+    // NOTE: we can't free the document, because its text is used by the index
+    document.state = lsp::server::Document::State::CLOSED;
   }
 
   // }}}

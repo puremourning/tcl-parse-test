@@ -7,18 +7,8 @@ namespace lsp::parse_manager
 {
   using server::Server;
 
-  void Clear( Server& server, const std::string& /*uri TODO*/ )
-  {
-    std::unique_lock l(server.index_lock);
-    // TODO(Ben) WAAAAHAHAHAAHAHA
-    server.index = Index::make_index();
-  }
-
   asio::awaitable<void> Reparse( Server& server, server::Document& doc )
   {
-    // FIXME we don't do this because we're replacing the index below
-    // Clear( server, doc.item.uri ); // TOOD(Ben): Bad, slow, lame.
-
     // TODO(Ben): this is pretty horrific. Parser::SourceFile duplicates the
     // contents and much other badness. this is just for exploration.
     auto context = Parser::ParseContext{
@@ -30,6 +20,9 @@ namespace lsp::parse_manager
                                        context,
                                        context.file.contents );
 
+    // TODO: Index::make_temp_index( server.index ) (with read lock)
+    //  that can then be merged with the main index via something like
+    //  Index::merge( server.index, temp_index ) under the write lock
     auto index = Index::make_index();
     Index::ScanContext scanContext{
       .nsPath = { index.global_namespace_id }
@@ -50,6 +43,7 @@ namespace lsp::parse_manager
                   const types::TextDocumentPositionParams pos )
   {
     // TODO: Check the URI!
+    std::shared_lock l(server.index_lock);
     auto& document = server.documents.at( pos.textDocument.uri );
     return Index::FindPositionInScript(
       document.script,

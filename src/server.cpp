@@ -136,11 +136,9 @@ namespace lsp::server
         }
         else if ( method == "textDocument/didClose" )
         {
-          asio::co_spawn( co_await asio::this_coro::executor,
-                          lsp::handlers::on_textdocument_didclose(server,
-                                                                  out,
-                                                                  message ),
-                          handle_unexpected_exception<> );
+          lsp::handlers::on_textdocument_didclose(server,
+                                                  out,
+                                                  message );
         }
         else if ( method == "textDocument/references" )
         {
