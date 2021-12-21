@@ -13,6 +13,7 @@
 
 #include <analyzer/source_location.cpp>
 #include <analyzer/script.cpp>
+#include <shared_mutex>
 
 namespace lsp::handlers
 {
@@ -188,6 +189,8 @@ namespace lsp::handlers
 
     auto response = json::array();
 
+    std::shared_lock l(server.index_lock);
+
     switch ( cursor.word->type )
     {
       case Parser::Word::Type::ARRAY_ACCESS:
@@ -262,6 +265,7 @@ namespace lsp::handlers
     }
 
     auto response = json::array();
+    std::shared_lock l(server.index_lock);
 
     // TODO/FIXME: Copy pasta above
     switch ( cursor.word->type )

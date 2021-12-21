@@ -6,6 +6,7 @@
 #include <tcl.h>
 #include <thread>
 #include <unordered_map>
+#include <shared_mutex>
 
 #include <analyzer/index.cpp>
 
@@ -41,8 +42,11 @@ namespace lsp::server
   struct Server final
   {
     WorkspaceOptions options;
+
+    std::shared_mutex doc_lock;
     std::unordered_map< std::string, Document > documents;
 
+    std::shared_mutex index_lock;
     Index::Index index = Index::make_index();
 
     std::string rootUri;
