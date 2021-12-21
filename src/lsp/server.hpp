@@ -42,8 +42,6 @@ namespace lsp::server
   struct Server final
   {
     WorkspaceOptions options;
-
-    std::shared_mutex doc_lock;
     std::unordered_map< std::string, Document > documents;
 
     std::shared_mutex index_lock;
