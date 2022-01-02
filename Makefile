@@ -14,15 +14,27 @@ TARGET ?= debug
 PLATFORM = $(shell uname)
 ARCH ?= $(shell uname -m)
 
+ifeq (${PLATFORM},Darwin)
+	# use the latest and greatest llvm/libc++
+	BREW=$(shell brew --prefix llvm)
+	CC=$(BREW)/bin/clang
+	CXX=$(BREW)/bin/clang++
+	LD=$(BREW)/bin/lld
+
+	# We have to teach ASIO that this version of llvm has c++20-compilant
+	# std::invoke_result (i.e. there is no std::result_of)
+	BASICFLAGS+=-DASIO_HAS_STD_INVOKE_RESULT
+endif
+
 BUILD_DEST = $(TARGET)-$(PLATFORM)-$(ARCH)
 BIN_DIR = $(BUILD_DEST)/bin
 
-BASICFLAGS=-isystem $(BUILD_DEST)/include \
-		   -isystem $(TCL)/generic -isystem $(TCL)/unix \
-		   -isystem $(ASIO)/include \
-		   -isystem $(JSON) \
-		   -I$(CURDIR)/src \
-		   -std=c++20
+BASICFLAGS+=-isystem $(BUILD_DEST)/include \
+		    -isystem $(TCL)/generic -isystem $(TCL)/unix \
+		    -isystem $(ASIO)/include \
+		    -isystem $(JSON) \
+		    -I$(CURDIR)/src \
+		    -std=c++20
 
 LIBANALYZER_SOURCES= src/analyzer/source_location.cpp \
 					 src/analyzer/script.cpp \

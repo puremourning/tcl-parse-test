@@ -142,7 +142,6 @@ namespace lsp::server
         }
         else if ( method == "textDocument/references" )
         {
-          // TODO: co_spawn, rather than block
           asio::co_spawn( co_await asio::this_coro::executor,
                           lsp::handlers::on_textdocument_references( server,
                                                                      out,
