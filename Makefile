@@ -79,7 +79,7 @@ endif
 
 LDFLAGS=-L$(BUILD_DEST)/lib -ltcl$(TCL_VERSION) -lz  -lpthread
 
-.PHONY: all clean test help
+.PHONY: all help clean distclean test compdb
 
 all: $(BUILD_DEST)  $(BIN_DIR)/analyzer $(BIN_DIR)/server
 
@@ -159,7 +159,7 @@ clean:
 
 distclean: clean
 	@rm -rf $(BUILD_DEST)
-	@cd $(TCL)/unix && $(MAKE) distclean
+	@cd $(TCL)/unix && ( [ ! -f Makefile ] || $(MAKE) distclean )
 	@rm -f compile_commands.json
 	@rm -rf .cache
 
@@ -172,5 +172,8 @@ test: $(BIN_DIR)/analyzer $(BIN_DIR)/server
 
 show_%:
 	@echo ${$(@:show_%=%)}
+
+compdb: distclean
+	@compiledb make MAKEFLAGS=$(MAKEFLAGS)
 
 # vim: ts=4
